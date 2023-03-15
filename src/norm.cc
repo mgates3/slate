@@ -27,6 +27,8 @@ norm(
     Norm in_norm, matrix_type A,
     Options const& opts )
 {
+    CallStack call( A.mpiRank(), __func__ );
+
     using scalar_t = typename matrix_type::value_type;
     using real_t = blas::real_type<scalar_t>;
     using internal::mpi_max_nan;
@@ -227,6 +229,8 @@ norm(
     Norm in_norm, matrix_type& A,
     Options const& opts )
 {
+    CallStack call( A.mpiRank(), "%s dispatch", __func__ );
+
     Target target = get_option( opts, Option::Target, Target::HostTask );
 
     switch (target) {

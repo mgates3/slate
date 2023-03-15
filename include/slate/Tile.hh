@@ -117,10 +117,10 @@ MatrixType conjTranspose( MatrixType&& A )
 /// and who owns (allocated, deallocates) the data.
 /// @ingroup enum
 ///
-enum class TileKind {
-    Workspace,   ///< SLATE allocated workspace tile
-    SlateOwned,  ///< SLATE allocated origin tile
-    UserOwned,   ///< User owned origin tile
+enum class TileKind : char {
+    Workspace  = 'w',  ///< SLATE allocated workspace tile
+    SlateOwned = 's',  ///< SLATE allocated origin tile
+    UserOwned  = 'u',  ///< User owned origin tile
 };
 
 //------------------------------------------------------------------------------

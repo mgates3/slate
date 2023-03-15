@@ -295,8 +295,15 @@ public:
     using ij_tuple    = std::tuple<int64_t, int64_t>;
     using TilesMap = std::map< ij_tuple, std::unique_ptr<TileNode_t> >;
 
-    MatrixStorage( int64_t m, int64_t n, int64_t mb, int64_t nb,
+    MatrixStorage( const char* name,
+                   int64_t m, int64_t n, int64_t mb, int64_t nb,
                    GridOrder order, int p, int q, MPI_Comm mpi_comm );
+
+    /// With name = "_".
+    MatrixStorage( int64_t m, int64_t n, int64_t mb, int64_t nb,
+                   GridOrder order, int p, int q, MPI_Comm mpi_comm )
+        : MatrixStorage( "_", m, n, mb, nb, order, p, q, mpi_comm )
+    {}
 
     MatrixStorage(std::function<int64_t (int64_t i)>& inTileMb,
                   std::function<int64_t (int64_t j)>& inTileNb,
@@ -324,6 +331,9 @@ protected:
     void destroyQueues();
 
 public:
+    std::string const& name() const { return name_; }
+    const char* cname() const { return name_.c_str(); }
+
     //--------------------------------------------------------------------------
     // batch arrays
     void allocateBatchArrays(int64_t batch_size, int64_t num_arrays);
@@ -501,6 +511,7 @@ public:
     }
 
 private:
+    std::string name_;
     TilesMap tiles_;        ///< map of tiles and associated states
     mutable omp_nest_lock_t lock_;  ///< TilesMap lock
     slate::Memory memory_;  ///< memory allocator
@@ -528,14 +539,20 @@ private:
 //------------------------------------------------------------------------------
 template <typename scalar_t>
 MatrixStorage<scalar_t>::MatrixStorage(
+    const char* name,
     int64_t m, int64_t n, int64_t mb, int64_t nb,
     GridOrder order, int p, int q, MPI_Comm mpi_comm)
-    : tiles_(),
+    : name_( name ),
+      tiles_(),
       memory_(sizeof(scalar_t) * mb * nb),  // block size in bytes
       batch_array_size_(0)
 {
     slate_mpi_call(
         MPI_Comm_rank(mpi_comm, &mpi_rank_));
+
+    CallStack call( mpi_rank_, "%s.store.%s( m %lld, n %lld, mb %lld, nb %lld, order %c, p %d, q %d )",
+                    cname(), __func__, llong( m ), llong( n ),
+                    llong( mb ), llong( nb ), char( order ), p, q );
 
     // todo: these are static, but we (re-)initialize with each matrix.
     // todo: similar code in BaseMatrix(...) and MatrixStorage(...)
@@ -603,6 +620,8 @@ MatrixStorage<scalar_t>::MatrixStorage(
       memory_(sizeof(scalar_t) * inTileMb(0) * inTileNb(0)),  // block size in bytes
       batch_array_size_(0)
 {
+    CallStack call( mpi_rank_, "%s.store.%s( lambdas )", cname(), __func__ );
+
     slate_mpi_call(
         MPI_Comm_rank(mpi_comm, &mpi_rank_));
 
@@ -620,6 +639,8 @@ MatrixStorage<scalar_t>::MatrixStorage(
 template <typename scalar_t>
 MatrixStorage<scalar_t>::~MatrixStorage()
 {
+    CallStack call( mpi_rank_, "%s.store.%s()", cname(), __func__ );
+
     try {
         clear();
         clearBatchArrays();
@@ -647,6 +668,8 @@ MatrixStorage<scalar_t>::~MatrixStorage()
 template <typename scalar_t>
 void MatrixStorage<scalar_t>::initQueues()
 {
+    CallStack call( mpi_rank_, "%s.store.%s()", cname(), __func__ );
+
     comm_queues_   .resize(num_devices_);
     compute_queues_.resize(1);
 
@@ -670,6 +693,8 @@ void MatrixStorage<scalar_t>::initQueues()
 template <typename scalar_t>
 void MatrixStorage<scalar_t>::destroyQueues()
 {
+    CallStack call( mpi_rank_, "%s.store.%s()", cname(), __func__ );
+
     int num_queues = int(compute_queues_.size());
     for (int device = 0; device < num_devices_; ++device) {
         delete comm_queues_[device];
@@ -701,6 +726,9 @@ template <typename scalar_t>
 void MatrixStorage<scalar_t>::allocateBatchArrays(
     int64_t batch_size, int64_t num_arrays)
 {
+    CallStack call( mpi_rank_, "%s.store.%s( batch_size %lld, num_arrays %lld )",
+                    cname(), __func__, llong( batch_size ), llong( num_arrays ) );
+
     assert(batch_size >= 0);
     assert(num_arrays >= 1);
     assert(array_host_.size() ==      array_dev_.size());
@@ -778,6 +806,8 @@ void MatrixStorage<scalar_t>::allocateBatchArrays(
 template <typename scalar_t>
 void MatrixStorage<scalar_t>::clearBatchArrays()
 {
+    CallStack call( mpi_rank_, "%s.store.%s()", cname(), __func__ );
+
     assert(array_host_.size() == array_dev_.size());
 
     for (std::size_t i = 0; i < array_host_.size(); ++i) {
@@ -807,6 +837,9 @@ void MatrixStorage<scalar_t>::clearBatchArrays()
 template <typename scalar_t>
 void MatrixStorage<scalar_t>::reserveHostWorkspace(int64_t num_tiles)
 {
+    CallStack call( mpi_rank_, "%s.store.%s( num_tiles ) [[no-op?]]",
+                    cname(), __func__, llong( num_tiles ) );
+
     int64_t n = num_tiles - memory_.capacity( HostNum );
     if (n > 0) {
         memory_.addHostBlocks(n);
@@ -820,6 +853,9 @@ void MatrixStorage<scalar_t>::reserveHostWorkspace(int64_t num_tiles)
 template <typename scalar_t>
 void MatrixStorage<scalar_t>::reserveDeviceWorkspace(int64_t num_tiles)
 {
+    CallStack call( mpi_rank_, "%s.store.%s( num_tiles )",
+                    cname(), __func__, llong( num_tiles ) );
+
     for (int device = 0; device < num_devices_; ++device) {
         int64_t n = num_tiles - memory_.capacity(device);
         if (n > 0) {
@@ -836,6 +872,9 @@ void MatrixStorage<scalar_t>::reserveDeviceWorkspace(int64_t num_tiles)
 template <typename scalar_t>
 void MatrixStorage<scalar_t>::ensureDeviceWorkspace(int device, int64_t num_tiles)
 {
+    CallStack call( mpi_rank_, "%s.store.%s( dev %d, num_tiles %lld )",
+                    cname(), __func__, device, llong( num_tiles ) );
+
     if (memory_.available(device) < size_t(num_tiles)) {
         // if device==HostNum (-1) use nullptr as queue (not comm_queues_[-1])
         blas::Queue* queue = ( device == HostNum ? nullptr : comm_queues_[device]);
@@ -848,6 +887,9 @@ void MatrixStorage<scalar_t>::ensureDeviceWorkspace(int device, int64_t num_tile
 template <typename scalar_t>
 void MatrixStorage<scalar_t>::freeTileMemory(Tile<scalar_t>* tile)
 {
+    CallStack call( mpi_rank_, "%s.store.%s( %p )",
+                    cname(), __func__, (void*) tile );
+
     slate_assert(tile != nullptr);
     if (tile->allocated())
         //delete[] tile->data();
@@ -862,6 +904,8 @@ void MatrixStorage<scalar_t>::freeTileMemory(Tile<scalar_t>* tile)
 template <typename scalar_t>
 void MatrixStorage<scalar_t>::clearWorkspace()
 {
+    CallStack call( mpi_rank_, "%s.store.%s()", cname(), __func__ );
+
     LockGuard guard(getTilesMapLock());
     for (auto iter = begin(); iter != end(); /* incremented below */) {
         auto& tile_node = *(iter->second);
@@ -901,6 +945,8 @@ void MatrixStorage<scalar_t>::clearWorkspace()
 template <typename scalar_t>
 void MatrixStorage<scalar_t>::releaseWorkspace()
 {
+    CallStack call( mpi_rank_, "%s.store.%s()", cname(), __func__ );
+
     LockGuard guard(getTilesMapLock());
     for (auto iter = begin(); iter != end(); /* incremented below */) {
         auto& tile_node = *(iter->second);
@@ -946,6 +992,12 @@ void MatrixStorage<scalar_t>::releaseWorkspace()
 template <typename scalar_t>
 void MatrixStorage<scalar_t>::erase(ijdev_tuple ijdev)
 {
+    CallStack call( mpi_rank_, "%s.store.%s( ijdev <%lld, %lld, %d> )",
+                    cname(), __func__,
+                    llong( std::get<0>( ijdev ) ),
+                    llong( std::get<1>( ijdev ) ),
+                           std::get<2>( ijdev ) );
+
     LockGuard guard(getTilesMapLock());
 
     auto iter = find(ijdev);
@@ -976,6 +1028,12 @@ void MatrixStorage<scalar_t>::erase(ijdev_tuple ijdev)
 template <typename scalar_t>
 void MatrixStorage<scalar_t>::release(ijdev_tuple ijdev)
 {
+    CallStack call( mpi_rank_, "%s.store.%s( ijdev <%lld, %lld, %d> )",
+                    cname(), __func__,
+                    llong( std::get<0>( ijdev ) ),
+                    llong( std::get<1>( ijdev ) ),
+                           std::get<2>( ijdev ) );
+
     LockGuard guard(getTilesMapLock());
 
     auto iter = find(ijdev);
@@ -1009,6 +1067,11 @@ void MatrixStorage<scalar_t>::release(ijdev_tuple ijdev)
 template <typename scalar_t>
 void MatrixStorage<scalar_t>::erase(ij_tuple ij)
 {
+    CallStack call( mpi_rank_, "%s.store.%s( ij <%lld, %lld> )",
+                    cname(), __func__,
+                    llong( std::get<0>( ij ) ),
+                    llong( std::get<1>( ij ) ) );
+
     LockGuard guard(getTilesMapLock());
 
     auto iter = tiles_.find(ij);
@@ -1031,6 +1094,8 @@ void MatrixStorage<scalar_t>::erase(ij_tuple ij)
 template <typename scalar_t>
 void MatrixStorage<scalar_t>::clear()
 {
+    CallStack call( mpi_rank_, "%s.store.%s()", cname(), __func__ );
+
     LockGuard guard(getTilesMapLock());
 
     for (auto iter = begin(); iter != end(); /* incremented below */) {
@@ -1054,6 +1119,9 @@ void MatrixStorage<scalar_t>::clear()
 template <typename scalar_t>
 scalar_t* MatrixStorage<scalar_t>::allocWorkspaceBuffer(int device)
 {
+    CallStack call( mpi_rank_, "%s.store.%s( dev %d )",
+                    cname(), __func__, device );
+
     int64_t mb = tileMb(0);
     int64_t nb = tileNb(0);
     // if device==HostNum (-1) use nullptr as queue (not comm_queues_[-1])
@@ -1074,6 +1142,9 @@ scalar_t* MatrixStorage<scalar_t>::allocWorkspaceBuffer(int device)
 template <typename scalar_t>
 void MatrixStorage<scalar_t>::releaseWorkspaceBuffer(scalar_t* data, int device)
 {
+    CallStack call( mpi_rank_, "%s.store.%s( %p, device %d )",
+                    cname(), __func__, (void*) data, device );
+
     memory_.free(data, device);
 }
 
@@ -1089,6 +1160,12 @@ template <typename scalar_t>
 TileInstance<scalar_t>& MatrixStorage<scalar_t>::tileAcquire(
     ijdev_tuple ijdev, Layout layout)
 {
+    CallStack call( mpi_rank_, "%s.store.%s( ijdev <%lld, %lld, %d>, layout %c )",
+                    cname(), __func__,
+                    llong( std::get<0>( ijdev ) ),
+                    llong( std::get<1>( ijdev ) ),
+                           std::get<2>( ijdev ), char( layout ) );
+
     int64_t i  = std::get<0>(ijdev);
     int64_t j  = std::get<1>(ijdev);
     int device = std::get<2>(ijdev);
@@ -1132,6 +1209,12 @@ template <typename scalar_t>
 TileInstance<scalar_t>& MatrixStorage<scalar_t>::tileInsert(
     ijdev_tuple ijdev, TileKind kind, Layout layout)
 {
+    CallStack call( mpi_rank_, "%s.store.%s( ijdev <%lld, %lld, %d>, kind %c, layout %c )",
+                    cname(), __func__,
+                    llong( std::get<0>( ijdev ) ),
+                    llong( std::get<1>( ijdev ) ),
+                           std::get<2>( ijdev ), char( kind ), char( layout ) );
+
     assert(kind == TileKind::Workspace ||
            kind == TileKind::SlateOwned);
     int64_t i  = std::get<0>(ijdev);
@@ -1177,6 +1260,13 @@ template <typename scalar_t>
 TileInstance<scalar_t>& MatrixStorage<scalar_t>::tileInsert(
     ijdev_tuple ijdev, scalar_t* data, int64_t lda, Layout layout)
 {
+    CallStack call( mpi_rank_, "%s.store.%s( ijdev <%lld, %lld, %d>, %p, lda %lld, layout %c )",
+                    cname(), __func__,
+                    llong( std::get<0>( ijdev ) ),
+                    llong( std::get<1>( ijdev ) ),
+                           std::get<2>( ijdev ),
+                    (void*) data, llong( lda ), char( layout ) );
+
     int64_t i  = std::get<0>(ijdev);
     int64_t j  = std::get<1>(ijdev);
     int device = std::get<2>(ijdev);
@@ -1213,6 +1303,9 @@ TileInstance<scalar_t>& MatrixStorage<scalar_t>::tileInsert(
 template <typename scalar_t>
 void MatrixStorage<scalar_t>::tileMakeTransposable(Tile<scalar_t>* tile)
 {
+    CallStack call( mpi_rank_, "%s.store.%s( tile %p )",
+                    cname(), __func__, (void*) tile );
+
     // quick return
     if (tile->isTransposable())
         return;
@@ -1237,6 +1330,9 @@ void MatrixStorage<scalar_t>::tileMakeTransposable(Tile<scalar_t>* tile)
 template <typename scalar_t>
 void MatrixStorage<scalar_t>::tileLayoutReset(Tile<scalar_t>* tile)
 {
+    CallStack call( mpi_rank_, "%s.store.%s( tile %p )",
+                    cname(), __func__, (void*) tile );
+
     if (tile->extended()) {
         memory_.free(tile->extData(), tile->device());
         tile->layoutReset();
@@ -1251,6 +1347,11 @@ void MatrixStorage<scalar_t>::tileLayoutReset(Tile<scalar_t>* tile)
 template <typename scalar_t>
 void MatrixStorage<scalar_t>::tileTick(ij_tuple ij)
 {
+    CallStack call( mpi_rank_, "%s.store.%s( ij <%lld, %lld> )",
+                    cname(), __func__,
+                    llong( std::get<0>( ij ) ),
+                    llong( std::get<1>( ij ) ) );
+
     if (! tileIsLocal(ij)) {
         LockGuard guard(getTilesMapLock());
         int64_t life = --(tiles_.at(ij)->lives());

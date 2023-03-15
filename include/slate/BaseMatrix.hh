@@ -84,8 +84,15 @@ protected:
                MPI_Comm mpi_comm);
 
     //----------
-    BaseMatrix( int64_t m, int64_t n, int64_t mb, int64_t nb,
+    BaseMatrix( const char* name,
+                int64_t m, int64_t n, int64_t mb, int64_t nb,
                 GridOrder order, int nprow, int npcol, MPI_Comm mpi_comm );
+
+    /// With name = "_".
+    BaseMatrix( int64_t m, int64_t n, int64_t mb, int64_t nb,
+                GridOrder order, int nprow, int npcol, MPI_Comm mpi_comm )
+        : BaseMatrix( "_", m, n, mb, nb, order, nprow, npcol, mpi_comm )
+    {}
 
     /// With order = Col.
     BaseMatrix( int64_t m, int64_t n, int64_t mb, int64_t nb,
@@ -133,6 +140,9 @@ private:
                    int64_t last_mb, int64_t last_nb);
 
 public:
+    std::string const& name() const { return storage_->name(); }
+    const char* cname() const { return storage_->cname(); }
+
     /// Returns shallow copy of op(A) that is transposed.
     /// @see conj_transpose
     template<typename MatrixType>
@@ -250,6 +260,9 @@ public:
     Tile<scalar_t>* tileInsert(int64_t i, int64_t j,
                                scalar_t* A, int64_t ld)
     {
+        CallStack call( mpiRank(), "%s.base.%s( i, %lld, j %lld, A %p, lda %lld )",
+                        cname(), __func__,
+                        llong( i ), llong( j ), (void*) A, llong( ld ) );
         return tileInsert( i, j, HostNum, A, ld );
     }
 
@@ -314,6 +327,7 @@ public:
 
     void tileAcquire(int64_t i, int64_t j, int device, Layout layout);
 
+    /// With device = HostNum.
     void tileAcquire(int64_t i, int64_t j, Layout layout)
     {
         tileAcquire( i, j, HostNum, layout );
@@ -400,6 +414,10 @@ public:
     /// Set life counter of tile {i, j} of op(A).
     void tileLife(int64_t i, int64_t j, int64_t life)
     {
+        CallStack call( mpiRank(), "%s.base.%s( i, %lld, j %lld, life %lld )",
+                        cname(), __func__,
+                        llong( i ), llong( j ), llong( life ) );
+
         storage_->tileLife(globalIndex(i, j), life);
     }
 
@@ -408,6 +426,9 @@ public:
     /// For local, non-workspace tiles, does nothing.
     void tileTick(int64_t i, int64_t j)
     {
+        CallStack call( mpiRank(), "%s.base.%s( i, %lld, j %lld )",
+                        cname(), __func__, llong( i ), llong( j ) );
+
         storage_->tileTick(globalIndex(i, j));
     }
 
@@ -418,6 +439,9 @@ public:
     /// during hemm and symm operations.
     int64_t tileReceiveCount(int64_t i, int64_t j) const
     {
+        CallStack call( mpiRank(), "%s.base.%s( i, %lld, j %lld )",
+                        cname(), __func__, llong( i ), llong( j ) );
+
         return storage_->tileReceiveCount( globalIndex( i, j ) );
     }
 
@@ -425,6 +449,9 @@ public:
     /// through MPI.
     void tileIncrementReceiveCount(int64_t i, int64_t j)
     {
+        CallStack call( mpiRank(), "%s.base.%s( i, %lld, j %lld )",
+                        cname(), __func__, llong( i ), llong( j ) );
+
         storage_->tileIncrementReceiveCount( globalIndex( i, j ) );
     }
 
@@ -432,6 +459,9 @@ public:
     /// through MPI.
     void tileDecrementReceiveCount(int64_t i, int64_t j)
     {
+        CallStack call( mpiRank(), "%s.base.%s( i, %lld, j %lld )",
+                        cname(), __func__, llong( i ), llong( j ) );
+
         storage_->tileDecrementReceiveCount( globalIndex( i, j ) );
     }
 
@@ -557,11 +587,13 @@ public:
     /// not just a sub-matrix.
     void clear()
     {
+        CallStack call( mpi_rank_, "%s.base.%s()", cname(), __func__ );
         storage_->clear();
     }
 
     void releaseWorkspace()
     {
+        CallStack call( mpi_rank_, "%s.base.%s()", cname(), __func__ );
         storage_->releaseWorkspace();
     }
 
@@ -582,6 +614,7 @@ public:
     /// not just a sub-matrix.
     void clearWorkspace()
     {
+        CallStack call( mpi_rank_, "%s.base.%s()", cname(), __func__ );
         storage_->clearWorkspace();
     }
 
@@ -599,6 +632,9 @@ public:
     ///
     void allocateBatchArrays(int64_t batch_size, int64_t num_arrays)
     {
+        CallStack call( mpi_rank_, "%s.base.%s( size %lld, num %lld )",
+                        cname(), __func__,
+                        llong( batch_size ), llong( num_arrays ) );
         storage_->allocateBatchArrays(batch_size, num_arrays);
     }
 
@@ -607,6 +643,7 @@ public:
     /// not just a sub-matrix.
     void clearBatchArrays()
     {
+        CallStack call( mpi_rank_, "%s.base.%s()", cname(), __func__ );
         storage_->clearBatchArrays();
     }
 
@@ -749,7 +786,9 @@ BaseMatrix<scalar_t>::BaseMatrix()
       op_(Op::NoTrans),
       layout_(Layout::ColMajor),
       storage_(nullptr)
-{}
+{
+    CallStack call( -1, "(empty).base.%s()", __func__ );
+}
 
 //------------------------------------------------------------------------------
 /// [internal]
@@ -805,6 +844,14 @@ BaseMatrix<scalar_t>::BaseMatrix(
           inTileMb, inTileNb, inTileRank, inTileDevice, mpi_comm)),
       mpi_comm_(mpi_comm)
 {
+    slate_mpi_call(
+        MPI_Comm_rank(mpi_comm_, &mpi_rank_));
+    slate_mpi_call(
+        MPI_Comm_group(mpi_comm_, &mpi_group_));
+
+    CallStack call( mpiRank(), "%s.base.%s( lambdas )",
+                    cname(), __func__ );
+
     // Count number of block rows.
     mt_ = 0;
     int64_t ii = 0;  // row index (not block row)
@@ -824,11 +871,6 @@ BaseMatrix<scalar_t>::BaseMatrix(
         jj += last_nb_;
         ++nt_;
     }
-
-    slate_mpi_call(
-        MPI_Comm_rank(mpi_comm_, &mpi_rank_));
-    slate_mpi_call(
-        MPI_Comm_group(mpi_comm_, &mpi_group_));
 
     // todo: these are static, but we (re-)initialize with each matrix.
     // todo: similar code in BaseMatrix(...) and MatrixStorage(...)
@@ -871,6 +913,7 @@ BaseMatrix<scalar_t>::BaseMatrix(
 ///
 template <typename scalar_t>
 BaseMatrix<scalar_t>::BaseMatrix(
+    const char* name,
     int64_t m, int64_t n, int64_t mb, int64_t nb,
     GridOrder order, int nprow, int npcol, MPI_Comm mpi_comm)
     : row0_offset_(0),
@@ -887,14 +930,21 @@ BaseMatrix<scalar_t>::BaseMatrix(
       uplo_(Uplo::General),
       op_(Op::NoTrans),
       layout_(Layout::ColMajor),
-      storage_(std::make_shared< MatrixStorage< scalar_t > >(
-          m, n, mb, nb, order, nprow, npcol, mpi_comm)),
       mpi_comm_(mpi_comm)
 {
     slate_mpi_call(
         MPI_Comm_rank(mpi_comm_, &mpi_rank_));
     slate_mpi_call(
         MPI_Comm_group(mpi_comm_, &mpi_group_));
+
+    CallStack call( mpi_rank_,
+                    "%s.%s( m %lld, n %lld, mb %lld, nb %lld, order %c, prow %d, pcol %d )",
+                    name, __func__,
+                    llong( m ), llong( n ), llong( mb ), llong( nb ),
+                    char( order ), nprow, npcol );
+
+    storage_ = std::make_shared< MatrixStorage< scalar_t > >(
+                  name, m, n, mb, nb, order, nprow, npcol, mpi_comm );
 
     // todo: these are static, but we (re-)initialize with each matrix.
     // todo: similar code in BaseMatrix(...) and MatrixStorage(...)
@@ -931,6 +981,11 @@ BaseMatrix<scalar_t>::BaseMatrix(
     int64_t j1, int64_t j2)
     : BaseMatrix(B)
 {
+    CallStack call( mpi_rank_, "%s.base.%s( sub %lld : %lld, %lld : %lld )",
+                    cname(), __func__,
+                    llong( i1 ), llong( i2 ),
+                    llong( j1 ), llong( j2 ) );
+
     initSubmatrix(i1, i2, j1, j2);
 }
 
@@ -945,6 +1000,11 @@ void BaseMatrix<scalar_t>::initSubmatrix(
     int64_t i1, int64_t i2,
     int64_t j1, int64_t j2)
 {
+    CallStack call( mpi_rank_, "%s.base.%s( i1 %lld, i2 %lld, j1 %lld, j2 %lld )",
+                    cname(), __func__,
+                    llong( i1 ), llong( i2 ),
+                    llong( j1 ), llong( j2 ) );
+
     assert((0 <= i1 && i1 < mt()) || (i1 > i2));  // todo: remove || ... clause?
     assert((0 <= i2 && i2 < mt()) || (i1 > i2));
     assert((0 <= j1 && j1 < nt()) || (j1 > j2));  // todo: remove || ... clause?
@@ -1014,6 +1074,11 @@ BaseMatrix<scalar_t>::BaseMatrix(
     BaseMatrix<scalar_t>& B, Slice slice)
     : BaseMatrix(B)
 {
+    CallStack call( mpi_rank_, "%s.base.%s( slice %lld : %lld, %lld : %lld )",
+                    cname(), __func__,
+                    llong( slice.row1 ), llong( slice.row2 ),
+                    llong( slice.col1 ), llong( slice.col2 ) );
+
     int64_t row1 = slice.row1;
     int64_t row2 = slice.row2;
     int64_t col1 = slice.col1;
@@ -1116,6 +1181,10 @@ template <typename out_scalar_t>
 BaseMatrix<out_scalar_t> BaseMatrix<scalar_t>::baseEmptyLike(
     int64_t mb, int64_t nb, Op deepOp)
 {
+    CallStack call( mpi_rank_, "%s.base.%s( mb %lld, nb %lld, op %c )",
+                    cname(), __func__,
+                    llong( mb ), llong( nb ), char( deepOp ) );
+
     // tileMb, tileNb are of A instead of op(A).
     auto newMb = this->storage_->tileMb;
     auto newNb = this->storage_->tileNb;
@@ -1199,6 +1268,9 @@ BaseMatrix<out_scalar_t> BaseMatrix<scalar_t>::baseEmptyLike(
 template <typename scalar_t>
 void swap(BaseMatrix<scalar_t>& A, BaseMatrix<scalar_t>& B)
 {
+    CallStack call( A.mpiRank(), "%s( %s %s ) sub-matrix",
+                    __func__, A.cname(), B.cname() );
+
     using std::swap;
     swap(A.ioffset_, B.ioffset_);
     swap(A.joffset_, B.joffset_);
@@ -1272,6 +1344,10 @@ template <typename scalar_t>
 Tile<scalar_t> BaseMatrix<scalar_t>::operator()(
     int64_t i, int64_t j, int device)
 {
+    CallStack call( mpi_rank_, "%s.base.at( i %lld, j %lld, dev %d )",
+                    cname(),
+                    llong( i ), llong( j ), device );
+
     auto tile = *(storage_->at(globalIndex(i, j, device)).tile());
 
     // Set op first, before setting offset, mb, nb!
@@ -1432,6 +1508,10 @@ template <typename scalar_t>
 Tile<scalar_t>* BaseMatrix<scalar_t>::tileInsert(
     int64_t i, int64_t j, int device)
 {
+    CallStack call( mpi_rank_, "%s.base.%s( i %lld, j %lld, device %d )",
+                    cname(), __func__,
+                    llong( i ), llong( j ), device );
+
     auto index = globalIndex(i, j, device);
     auto& tile_instance = storage_->tileInsert(index, TileKind::SlateOwned, layout_);
     return tile_instance.tile();
@@ -1456,6 +1536,10 @@ template <typename scalar_t>
 Tile<scalar_t>* BaseMatrix<scalar_t>::tileInsertWorkspace(
     int64_t i, int64_t j, int device, Layout layout)
 {
+    CallStack call( mpi_rank_, "%s.base.%s( i %lld, j %lld, device %d, layout %c )",
+                    cname(), __func__,
+                    llong( i ), llong( j ), device, char( layout ) );
+
     auto index = globalIndex(i, j, device);
     auto& tile_instance = storage_->tileInsert(index, TileKind::Workspace, layout);
     return tile_instance.tile();
@@ -1477,7 +1561,12 @@ template<typename scalar_t>
 scalar_t* BaseMatrix<scalar_t>::allocWorkspaceBuffer(int device, int64_t size)
 {
     assert(size <= storage_->tileMb(0)*storage_->tileNb(0));
-    return storage_->allocWorkspaceBuffer(device);
+
+    scalar_t* buffer = storage_->allocWorkspaceBuffer(device);
+    CallStack call( mpi_rank_, "%s.base.%s( device %d, size %lld ) => %p [[post]]",
+                    cname(), __func__,
+                    device, llong( size ), (void*) buffer );
+    return buffer;
 }
 
 //------------------------------------------------------------------------------
@@ -1492,6 +1581,10 @@ scalar_t* BaseMatrix<scalar_t>::allocWorkspaceBuffer(int device, int64_t size)
 template<typename scalar_t>
 void BaseMatrix<scalar_t>::freeWorkspaceBuffer(int device, scalar_t* buffer)
 {
+    CallStack call( mpi_rank_, "%s.base.%s( device %d, buffer %p )",
+                    cname(), __func__,
+                    device, (void*) buffer );
+
     storage_->releaseWorkspaceBuffer(buffer, device);
 }
 
@@ -1520,6 +1613,11 @@ template <typename scalar_t>
 Tile<scalar_t>* BaseMatrix<scalar_t>::tileInsert(
     int64_t i, int64_t j, int device, scalar_t* data, int64_t ld)
 {
+    CallStack call( mpi_rank_, "%s.base.%s( i %lld, j %lld, dev %d, data %p, ld %lld )",
+                    cname(), __func__,
+                    llong( i ), llong( j ), device, (void*) data, llong( ld ) );
+
+
     auto index = globalIndex(i, j, device);
     // tile layout must match the matrix layout
     auto& tile_instance = storage_->tileInsert(index, data, ld, layout_); // TileKind::UserOwned
@@ -1544,6 +1642,10 @@ Tile<scalar_t>* BaseMatrix<scalar_t>::tileInsert(
 template <typename scalar_t>
 void BaseMatrix<scalar_t>::tileErase(int64_t i, int64_t j, int device)
 {
+    CallStack call( mpi_rank_, "%s.base.%s( i %lld, j %lld )",
+                    cname(), __func__,
+                    llong( i ), llong( j ) );
+
     if (device == AllDevices) {
         storage_->erase(globalIndex(i, j));
     }
@@ -1572,6 +1674,10 @@ void BaseMatrix<scalar_t>::tileErase(int64_t i, int64_t j, int device)
 template <typename scalar_t>
 void BaseMatrix<scalar_t>::tileRelease(int64_t i, int64_t j, int device)
 {
+    CallStack call( mpi_rank_, "%s.base.%s( i %lld, j %lld, dev %d )",
+                    cname(), __func__,
+                    llong( i ), llong( j ), device );
+
     storage_->release(globalIndex(i, j, device));
 }
 
@@ -1595,7 +1701,11 @@ MOSI BaseMatrix<scalar_t>::tileState(int64_t i, int64_t j, int device)
     auto iter = storage_->find(globalIndex(i, j, device));
     assert(iter != storage_->end());
 
-    return iter->second->at(device).getState();
+    MOSI state = iter->second->at(device).getState();
+    CallStack call( mpi_rank_, "%s.base.%s( i %lld, j %lld, dev %d ) => %x [[post]]",
+                    cname(), __func__,
+                    llong( i ), llong( j ), device, state );
+    return state;
 }
 
 //------------------------------------------------------------------------------
@@ -1614,6 +1724,10 @@ MOSI BaseMatrix<scalar_t>::tileState(int64_t i, int64_t j, int device)
 template <typename scalar_t>
 void BaseMatrix<scalar_t>::tileState(int64_t i, int64_t j, int device, MOSI mosi)
 {
+    CallStack call( mpi_rank_, "%s.base.%s( i %lld, j %lld, dev %d, mosi %x )",
+                    cname(), __func__,
+                    llong( i ), llong( j ), device, mosi );
+
     auto tileIter = storage_->find(globalIndex(i, j, device));
     assert(tileIter != storage_->end());
 
@@ -1639,7 +1753,11 @@ bool BaseMatrix<scalar_t>::tileOnHold(int64_t i, int64_t j, int device)
     auto iter = storage_->find(globalIndex(i, j, device));
     assert(iter != storage_->end());
 
-    return iter->second->at(device).stateOn(MOSI::OnHold);
+    bool state = iter->second->at(device).stateOn(MOSI::OnHold);
+    CallStack call( mpi_rank_, "%s.base.%s( i %lld, j %lld, dev %d ) => %d [[post]]",
+                    cname(), __func__,
+                    llong( i ), llong( j ), device, state );
+    return state;
 }
 
 //------------------------------------------------------------------------------
@@ -1657,6 +1775,10 @@ bool BaseMatrix<scalar_t>::tileOnHold(int64_t i, int64_t j, int device)
 template <typename scalar_t>
 void BaseMatrix<scalar_t>::tileUnsetHold(int64_t i, int64_t j, int device)
 {
+    CallStack call( mpi_rank_, "%s.base.%s( i %lld, j %lld, dev %d )",
+                    cname(), __func__,
+                    llong( i ), llong( j ), device );
+
     auto iter = storage_->find(globalIndex(i, j, device));
     if (iter != storage_->end())
         iter->second->at(device).setState(~MOSI::OnHold);
@@ -1671,6 +1793,9 @@ void BaseMatrix<scalar_t>::tileUnsetHold(int64_t i, int64_t j, int device)
 template <typename scalar_t>
 void BaseMatrix<scalar_t>::tileUnsetHoldAll(int device)
 {
+    CallStack call( mpi_rank_, "%s.base.%s( dev %d )",
+                    cname(), __func__, device );
+
     for (int64_t j = 0; j < nt(); ++j)
         for (int64_t i = 0; i < mt(); ++i)
             if (tileIsLocal(i, j))
@@ -1683,6 +1808,9 @@ void BaseMatrix<scalar_t>::tileUnsetHoldAll(int device)
 template <typename scalar_t>
 void BaseMatrix<scalar_t>::tileUnsetHoldAllOnDevices()
 {
+    CallStack call( mpi_rank_, "%s.base.%s()",
+                    cname(), __func__ );
+
     #pragma omp parallel for slate_omp_default_none
     for (int64_t j = 0; j < nt(); ++j)
         for (int64_t i = 0; i < mt(); ++i)
@@ -1711,6 +1839,10 @@ void BaseMatrix<scalar_t>::tileUnsetHoldAllOnDevices()
 template <typename scalar_t>
 void BaseMatrix<scalar_t>::tileModified(int64_t i, int64_t j, int device, bool permissive)
 {
+    CallStack call( mpi_rank_, "%s.base.%s( i %lld, j %lld, dev %d, perm %d )",
+                    cname(), __func__,
+                    llong( i ), llong( j ), device, permissive );
+
     auto& tile_node = storage_->at(globalIndex(i, j));
 
     LockGuard guard(tile_node.getLock());
@@ -1756,6 +1888,10 @@ template <Target target>
 void BaseMatrix<scalar_t>::tileSend(
     int64_t i, int64_t j, int dst_rank, int tag)
 {
+    CallStack call( mpi_rank_, "%s.base.%s( i %lld, j %lld, dst %d, tag %d, target %c )",
+                    cname(), __func__,
+                    llong( i ), llong( j ), dst_rank, tag, char( target ) );
+
     if (dst_rank != mpiRank()) {
         // todo: need to acquire read access lock to TileNode(i, j)
         tileGetForReading(i, j, LayoutConvert::None);
@@ -1794,6 +1930,10 @@ template <Target target>
 void BaseMatrix<scalar_t>::tileRecv(
     int64_t i, int64_t j, int src_rank, Layout layout, int tag)
 {
+    CallStack call( mpi_rank_, "%s.base.%s( i %lld, j %lld, src %d, tag %d, target %c, layout %c )",
+                    cname(), __func__,
+                    llong( i ), llong( j ), src_rank, tag, char( target ), char( layout ) );
+
     if (src_rank != mpiRank()) {
         if (! tileIsLocal(i, j)) {
             // Create tile to receive data, with life span.
@@ -1807,6 +1947,7 @@ void BaseMatrix<scalar_t>::tileRecv(
             else
                 life += tileLife(i, j);
             tileLife(i, j, life);
+            // todo: tileIncrementReceiveCount
         }
         else {
             tileAcquire(i, j, layout);
@@ -1864,6 +2005,10 @@ template <Target target>
 void BaseMatrix<scalar_t>::tileBcast(
     int64_t i, int64_t j, BaseMatrix<scalar_t> const& B, Layout layout, int tag, int64_t life_factor)
 {
+    CallStack call( mpi_rank_, "%s.base.%s( i %lld, j %lld, B %s, layout %c, tag %d, life %lld )",
+                    cname(), __func__,
+                    llong( i ), llong( j ), B.cname(), char( layout ), tag, llong( life_factor ) );
+
     BcastList bcast_list_B;
     bcast_list_B.push_back({i, j, {B}});
     listBcast<target>(bcast_list_B, layout, tag, life_factor);
@@ -1903,6 +2048,10 @@ void BaseMatrix<scalar_t>::listBcast(
     BcastList& bcast_list, Layout layout,
     int tag, int64_t life_factor, bool is_shared)
 {
+    CallStack call( mpi_rank_, "%s.base.%s( bcast_list, layout %c, tag %d, life %lld, on_hold %d )",
+                    cname(), __func__,
+                    char( layout ), tag, llong( life_factor ), is_shared );
+
     if (target == Target::Devices) {
         assert(num_devices() > 0);
     }
@@ -1956,6 +2105,7 @@ void BaseMatrix<scalar_t>::listBcast(
                 else
                     life += tileLife(i, j); // todo: use temp tile to receive
                 tileLife(i, j, life);
+                // todo: tileIncrementReceiveCount
             }
 
             // Send across MPI ranks.
@@ -2052,6 +2202,10 @@ void BaseMatrix<scalar_t>::listBcastMT(
     BcastListTag& bcast_list, Layout layout,
     int64_t life_factor, bool is_shared)
 {
+    CallStack call( mpi_rank_, "%s.base.%s( bcast_list, layout %c, life %lld, on_hold %d )",
+                    cname(), __func__,
+                    char( layout ), llong( life_factor ), is_shared );
+
     if (target == Target::Devices) {
         assert(num_devices() > 0);
     }
@@ -2157,6 +2311,10 @@ template <typename scalar_t>
 template <Target target>
 void BaseMatrix<scalar_t>::listReduce(ReduceList& reduce_list, Layout layout, int tag)
 {
+    CallStack call( mpi_rank_, "%s.base.%s( reduce_list, layout %c, tag %d )",
+                    cname(), __func__,
+                    char( layout ), tag );
+
     for (auto reduce : reduce_list) {
 
         auto i = std::get<0>(reduce);
@@ -2212,64 +2370,69 @@ void BaseMatrix<scalar_t>::listReduce(ReduceList& reduce_list, Layout layout, in
 ///     Set of MPI ranks to broadcast to.
 ///
 // todo: use the commFromSet() function from slate_internal_comm.cc
-template <typename scalar_t>
-void BaseMatrix<scalar_t>::tileBcastToSet(
-    int64_t i, int64_t j, std::set<int> const& bcast_set)
-{
-    // this function does not use tags, kept for reference
-    assert(false);  // This variant of tileBcastToSet() is obsolete
-
-    // Quit if only root in the broadcast set.
-    if (bcast_set.size() == 1)
-        return;
-
-    // Convert the set of ranks to a vector.
-    std::vector<int> bcast_vec(bcast_set.begin(), bcast_set.end());
-
-    // Create the broadcast group.
-    MPI_Group bcast_group;
-    #pragma omp critical(slate_mpi)
-    slate_mpi_call(
-        MPI_Group_incl(mpi_group_, bcast_vec.size(), bcast_vec.data(),
-                       &bcast_group));
-
-    // Create a broadcast communicator.
-    int tag = 0;
-    MPI_Comm bcast_comm;
-    #pragma omp critical(slate_mpi)
-    {
-        trace::Block trace_block("MPI_Comm_create_group");
-        slate_mpi_call(
-            MPI_Comm_create_group(mpi_comm_, bcast_group, tag, &bcast_comm));
-    }
-    assert(bcast_comm != MPI_COMM_NULL);
-
-    // Find the broadcast rank.
-    int bcast_rank;
-    #pragma omp critical(slate_mpi)
-    MPI_Comm_rank(bcast_comm, &bcast_rank);
-
-    // Find the broadcast root rank.
-    int root_rank = tileRank(i, j);
-    int bcast_root;
-    #pragma omp critical(slate_mpi)
-    slate_mpi_call(
-        MPI_Group_translate_ranks(mpi_group_, 1, &root_rank,
-                                  bcast_group, &bcast_root));
-
-    // Do the broadcast.
-    at(i, j).bcast(bcast_root, bcast_comm);
-
-    // Free the group.
-    #pragma omp critical(slate_mpi)
-    slate_mpi_call(
-        MPI_Group_free(&bcast_group));
-
-    // Free the communicator.
-    #pragma omp critical(slate_mpi)
-    slate_mpi_call(
-        MPI_Comm_free(&bcast_comm));
-}
+//  [[deprecated]]
+//  template <typename scalar_t>
+//  void BaseMatrix<scalar_t>::tileBcastToSet(
+//      int64_t i, int64_t j, std::set<int> const& bcast_set)
+//  {
+//      CallStack call( mpi_rank_, "%s.base.%s( i %lld, j %lld, bcast_set )",
+//                      cname(), __func__,
+//                      llong( i ), llong( j ) );
+//
+//      // this function does not use tags, kept for reference
+//      assert(false);  // This variant of tileBcastToSet() is obsolete
+//
+//      // Quit if only root in the broadcast set.
+//      if (bcast_set.size() == 1)
+//          return;
+//
+//      // Convert the set of ranks to a vector.
+//      std::vector<int> bcast_vec(bcast_set.begin(), bcast_set.end());
+//
+//      // Create the broadcast group.
+//      MPI_Group bcast_group;
+//      #pragma omp critical(slate_mpi)
+//      slate_mpi_call(
+//          MPI_Group_incl(mpi_group_, bcast_vec.size(), bcast_vec.data(),
+//                         &bcast_group));
+//
+//      // Create a broadcast communicator.
+//      int tag = 0;
+//      MPI_Comm bcast_comm;
+//      #pragma omp critical(slate_mpi)
+//      {
+//          trace::Block trace_block("MPI_Comm_create_group");
+//          slate_mpi_call(
+//              MPI_Comm_create_group(mpi_comm_, bcast_group, tag, &bcast_comm));
+//      }
+//      assert(bcast_comm != MPI_COMM_NULL);
+//
+//      // Find the broadcast rank.
+//      int bcast_rank;
+//      #pragma omp critical(slate_mpi)
+//      MPI_Comm_rank(bcast_comm, &bcast_rank);
+//
+//      // Find the broadcast root rank.
+//      int root_rank = tileRank(i, j);
+//      int bcast_root;
+//      #pragma omp critical(slate_mpi)
+//      slate_mpi_call(
+//          MPI_Group_translate_ranks(mpi_group_, 1, &root_rank,
+//                                    bcast_group, &bcast_root));
+//
+//      // Do the broadcast.
+//      at(i, j).bcast(bcast_root, bcast_comm);
+//
+//      // Free the group.
+//      #pragma omp critical(slate_mpi)
+//      slate_mpi_call(
+//          MPI_Group_free(&bcast_group));
+//
+//      // Free the communicator.
+//      #pragma omp critical(slate_mpi)
+//      slate_mpi_call(
+//          MPI_Comm_free(&bcast_comm));
+//  }
 
 //------------------------------------------------------------------------------
 /// [internal]
@@ -2302,11 +2465,16 @@ void BaseMatrix<scalar_t>::tileBcastToSet(
     int64_t i, int64_t j, std::set<int> const& bcast_set,
     int radix, int tag, Layout layout, Target target)
 {
+    CallStack call( mpi_rank_, "%s.base.%s( i %lld, j %lld, bcast_set, radix %d, tag %d, layout %c, target %c )",
+                    cname(), __func__,
+                    llong( i ), llong( j ), radix, tag, char( layout ), char( target ) );
+
     std::vector<MPI_Request> requests;
     requests.reserve(radix);
 
     tileIbcastToSet(i, j, bcast_set, radix, tag, layout, requests, target);
-    slate_mpi_call(MPI_Waitall(requests.size(), requests.data(), MPI_STATUSES_IGNORE));
+    slate_mpi_call(
+        MPI_Waitall( requests.size(), requests.data(), MPI_STATUSES_IGNORE ) );
 }
 
 //------------------------------------------------------------------------------
@@ -2346,6 +2514,10 @@ void BaseMatrix<scalar_t>::tileIbcastToSet(
     std::vector<MPI_Request>& send_requests,
     Target target)
 {
+    CallStack call( mpi_rank_, "%s.base.%s( i %lld, j %lld, bcast_set, radix %d, tag %d, layout %c, requests, target %c )",
+                    cname(), __func__,
+                    llong( i ), llong( j ), radix, tag, char( layout ), char( target ) );
+
     // Quit if only root in the broadcast set.
     if (bcast_set.size() == 1)
         return;
@@ -2379,6 +2551,7 @@ void BaseMatrix<scalar_t>::tileIbcastToSet(
     #if defined( SLATE_HAVE_GPU_AWARE_MPI )
         if (target == Target::Devices) {
             device = tileDevice( i, j );
+            CallStack call2( mpi_rank_, "GPU-aware MPI" );
         }
     #endif
 
@@ -2415,6 +2588,10 @@ void BaseMatrix<scalar_t>::tileReduceFromSet(
     int64_t i, int64_t j, int root_rank, std::set<int>& reduce_set,
     int radix, int tag, Layout layout)
 {
+    CallStack call( mpi_rank_, "%s.base.%s( i %lld, j %lld, root %d, reduce_set, radix %d, tag %d, layout %c )",
+                    cname(), __func__,
+                    llong( i ), llong( j ), root_rank, radix, tag, char( layout ) );
+
     const scalar_t one = 1.0;
 
     // Quit if the reduction set is empty
@@ -2487,6 +2664,10 @@ void BaseMatrix<scalar_t>::tileCopyDataLayout(Tile<scalar_t>* src_tile,
                                               Layout target_layout,
                                               bool async)
 {
+    CallStack call( mpi_rank_, "%s.base.%s( src, dst, layout %c, async %d )",
+                    cname(), __func__,
+                    char( target_layout ), async );
+
     bool src_userOwned = ! src_tile->allocated();
     bool dst_userOwned = ! dst_tile->allocated();
     assert(! (src_userOwned && dst_userOwned));
@@ -2702,6 +2883,10 @@ template <typename scalar_t>
 void BaseMatrix<scalar_t>::tileAcquire(int64_t i, int64_t j, int device,
                                        Layout layout)
 {
+    CallStack call( mpiRank(), "%s.base.%s( i, %lld, j %lld, dev %d, layout %c )",
+                    cname(), __func__,
+                    llong( i ), llong( j ), device, char( layout ) );
+
     auto& tile_instance = storage_->tileAcquire(globalIndex(i, j, device), layout);
     auto tile = tile_instance.tile();
 
@@ -2759,6 +2944,11 @@ void BaseMatrix<scalar_t>::tileGet(int64_t i, int64_t j, int dst_device,
                                    LayoutConvert layout, bool modify, bool hold,
                                    bool async)
 {
+    CallStack call( mpiRank(), "%s.base.%s( i, %lld, j %lld, dev %d, layout %c, modify %d, hold %d, async %d )",
+                    cname(), __func__,
+                    llong( i ), llong( j ), dst_device, char( layout ),
+                    modify, hold, async );
+
     // todo: need to acquire read access to the TilesMap
     // LockGuard guard2(storage_->getTilesMapLock());
 
@@ -2900,6 +3090,11 @@ void BaseMatrix<scalar_t>::tileGet(std::set<ij_tuple>& tile_set, int device,
                                    LayoutConvert in_layoutConvert, bool modify, bool hold,
                                    bool async)
 {
+    CallStack call( mpiRank(), "%s.base.%s( set, dev %d, layout %c, modify %d, hold %d, async %d )",
+                    cname(), __func__,
+                    device, char( in_layoutConvert ),
+                    modify, hold, async );
+
     LayoutConvert layoutConvert = (device == HostNum)
                                   ? in_layoutConvert
                                   : LayoutConvert::None;
@@ -2947,6 +3142,10 @@ template <typename scalar_t>
 void BaseMatrix<scalar_t>::tileGetForReading(int64_t i, int64_t j, int device,
                                              LayoutConvert layout)
 {
+    CallStack call( mpiRank(), "%s.base.%s( i %lld, j %lld, dev %d, layout %c )",
+                    cname(), __func__,
+                    llong( i ), llong( j ), device, char( layout ) );
+
     tileGet(i, j, device, layout, false, false, false);
 }
 
@@ -2972,6 +3171,10 @@ void BaseMatrix<scalar_t>::tileGetForReading(std::set<ij_tuple>& tile_set,
                                              int device,
                                              LayoutConvert layout)
 {
+    CallStack call( mpiRank(), "%s.base.%s( set, dev %d, layout %c )",
+                    cname(), __func__,
+                    device, char( layout ) );
+
     if (device != HostNum) {
         LockGuard guard(storage_->getTilesMapLock());
 
@@ -3019,6 +3222,9 @@ template <typename scalar_t>
 void BaseMatrix<scalar_t>::tileGetForReading(std::set<ij_tuple>& tile_set,
                                              LayoutConvert layout, int from_device)
 {
+    CallStack call( mpiRank(), "%s.base.%s( set, layout %c, from_device %d )",
+                    cname(), __func__, char( layout ), from_device );
+
     tileGet( tile_set, HostNum, layout, false, false, true );
 
     comm_queue(from_device)->sync();
@@ -3052,6 +3258,10 @@ template <typename scalar_t>
 void BaseMatrix<scalar_t>::tileGetForWriting(int64_t i, int64_t j, int device,
                                              LayoutConvert layout)
 {
+    CallStack call( mpiRank(), "%s.base.%s( i %lld, j %lld, dev %d, layout %c )",
+                    cname(), __func__,
+                    llong( i ), llong( j ), device, char( layout ) );
+
     tileGet(i, j, device, layout, true, false, false);
 }
 
@@ -3075,6 +3285,10 @@ template <typename scalar_t>
 void BaseMatrix<scalar_t>::tileGetForWriting(std::set<ij_tuple>& tile_set,
                                              int device, LayoutConvert layout)
 {
+    CallStack call( mpiRank(), "%s.base.%s( set, dev %d, layout %c )",
+                    cname(), __func__,
+                    device, char( layout ) );
+
     if (device != HostNum) {
         LockGuard guard(storage_->getTilesMapLock());
 
@@ -3123,6 +3337,10 @@ template <typename scalar_t>
 void BaseMatrix<scalar_t>::tileGetAndHold(int64_t i, int64_t j, int device,
                                           LayoutConvert layout)
 {
+    CallStack call( mpiRank(), "%s.base.%s( i %lld, j %lld, dev %d, layout %c )",
+                    cname(), __func__,
+                    llong( i ), llong( j ), device, char( layout ) );
+
     tileGet(i, j, device, layout, false, true, false);
 }
 
@@ -3146,6 +3364,10 @@ template <typename scalar_t>
 void BaseMatrix<scalar_t>::tileGetAndHold(std::set<ij_tuple>& tile_set, int device,
                                           LayoutConvert layout)
 {
+    CallStack call( mpiRank(), "%s.base.%s( set, dev %d, layout %c )",
+                    cname(), __func__,
+                    device, char( layout ) );
+
     if (device != HostNum) {
         LockGuard guard(storage_->getTilesMapLock());
 
@@ -3186,6 +3408,10 @@ void BaseMatrix<scalar_t>::tileGetAndHold(std::set<ij_tuple>& tile_set, int devi
 template <typename scalar_t>
 void BaseMatrix<scalar_t>::tileGetAllForReading(int device, LayoutConvert layout)
 {
+    CallStack call( mpiRank(), "%s.base.%s( dev %d, layout %c )",
+                    cname(), __func__,
+                    device, char( layout ) );
+
     std::set<ij_tuple> tiles_set;
     for (int64_t j = 0; j < nt(); ++j)
         for (int64_t i = 0; i < mt(); ++i)
@@ -3215,6 +3441,10 @@ void BaseMatrix<scalar_t>::tileGetAllForReading(int device, LayoutConvert layout
 template <typename scalar_t>
 void BaseMatrix<scalar_t>::tileGetAllForWriting(int device, LayoutConvert layout)
 {
+    CallStack call( mpiRank(), "%s.base.%s( dev %d, layout %c )",
+                    cname(), __func__,
+                    device, char( layout ) );
+
     std::set<ij_tuple> tiles_set;
     for (int64_t j = 0; j < nt(); ++j)
         for (int64_t i = 0; i < mt(); ++i)
@@ -3244,6 +3474,10 @@ void BaseMatrix<scalar_t>::tileGetAllForWriting(int device, LayoutConvert layout
 template <typename scalar_t>
 void BaseMatrix<scalar_t>::tileGetAndHoldAll(int device, LayoutConvert layout)
 {
+    CallStack call( mpiRank(), "%s.base.%s( dev %d, layout %c )",
+                    cname(), __func__,
+                    device, char( layout ) );
+
     std::set<ij_tuple> tiles_set;
     for (int64_t j = 0; j < nt(); ++j)
         for (int64_t i = 0; i < mt(); ++i)
@@ -3268,6 +3502,9 @@ void BaseMatrix<scalar_t>::tileGetAndHoldAll(int device, LayoutConvert layout)
 template <typename scalar_t>
 void BaseMatrix<scalar_t>::tileGetAllForReadingOnDevices(LayoutConvert layout)
 {
+    CallStack call( mpiRank(), "%s.base.%s( layout %c )",
+                    cname(), __func__, char( layout ) );
+
     std::vector< std::set<ij_tuple> > tiles_set(num_devices());
     for (int64_t j = 0; j < nt(); ++j) {
         for (int64_t i = 0; i < mt(); ++i) {
@@ -3304,6 +3541,9 @@ void BaseMatrix<scalar_t>::tileGetAllForReadingOnDevices(LayoutConvert layout)
 template <typename scalar_t>
 void BaseMatrix<scalar_t>::tileGetAllForWritingOnDevices(LayoutConvert layout)
 {
+    CallStack call( mpiRank(), "%s.base.%s( layout %c )",
+                    cname(), __func__, char( layout ) );
+
     std::vector< std::set<ij_tuple> > tiles_set(num_devices());
     for (int64_t j = 0; j < nt(); ++j) {
         for (int64_t i = 0; i < mt(); ++i) {
@@ -3340,6 +3580,9 @@ void BaseMatrix<scalar_t>::tileGetAllForWritingOnDevices(LayoutConvert layout)
 template <typename scalar_t>
 void BaseMatrix<scalar_t>::tileGetAndHoldAllOnDevices(LayoutConvert layout)
 {
+    CallStack call( mpiRank(), "%s.base.%s( layout %c )",
+                    cname(), __func__, char( layout ) );
+
     std::vector< std::set<ij_tuple> > tiles_set(num_devices());
     for (int64_t j = 0; j < nt(); ++j) {
         for (int64_t i = 0; i < mt(); ++i) {
@@ -3378,6 +3621,10 @@ void BaseMatrix<scalar_t>::tileGetAndHoldAllOnDevices(LayoutConvert layout)
 template <typename scalar_t>
 Tile<scalar_t>* BaseMatrix<scalar_t>::tileUpdateOrigin(int64_t i, int64_t j)
 {
+    CallStack call( mpiRank(), "%s.base.%s( i %lld, j %lld )",
+                    cname(), __func__,
+                    llong( i ), llong( j ) );
+
     auto& tile_node = storage_->at(globalIndex(i, j));
 
     LockGuard guard(tile_node.getLock());
@@ -3413,6 +3660,9 @@ Tile<scalar_t>* BaseMatrix<scalar_t>::tileUpdateOrigin(int64_t i, int64_t j)
 template <typename scalar_t>
 void BaseMatrix<scalar_t>::tileUpdateAllOrigin()
 {
+    CallStack call( mpiRank(), "%s.base.%s()",
+                    cname(), __func__ );
+
     std::vector< std::set<ij_tuple> > tiles_set_host(num_devices());
     std::vector< std::set<ij_tuple> > tiles_set_dev(num_devices());
     for (int64_t j = 0; j < this->nt(); ++j) {
@@ -3522,6 +3772,10 @@ template <typename scalar_t>
 void BaseMatrix<scalar_t>::tileLayoutConvert(
     int64_t i, int64_t j, int device, Layout layout, bool reset, bool async)
 {
+    CallStack call( mpiRank(), "%s.base.%s( i %lld, j %lld, dev %d, layout %c, reset %d, async %d )",
+                    cname(), __func__,
+                    llong( i ), llong( j ), device, char( layout ), reset, async );
+
     LockGuard guard(storage_->at(globalIndex(i, j, device)).getLock());
     auto tile = storage_->at(globalIndex(i, j, device)).tile();
     if (tile->layout() != layout) {
@@ -3582,6 +3836,10 @@ template <typename scalar_t>
 void BaseMatrix<scalar_t>::tileLayoutConvert(
     std::set<ij_tuple>& tile_set, int device, Layout layout, bool reset)
 {
+    CallStack call( mpiRank(), "%s.base.%s( set, dev %d, layout %c, reset %d, async %d )",
+                    cname(), __func__,
+                    device, char( layout ), reset );
+
     if (device == HostNum) {
         #pragma omp taskgroup
         for (auto iter = tile_set.begin(); iter != tile_set.end(); ++iter) {
@@ -3779,6 +4037,10 @@ void BaseMatrix<scalar_t>::tileLayoutConvert(
 template <typename scalar_t>
 void BaseMatrix<scalar_t>::tileLayoutConvert(int device, Layout layout, bool reset)
 {
+    CallStack call( mpiRank(), "%s.base.%s( [all] layout %c, reset %d )",
+                    cname(), __func__,
+                    device, char( layout ), reset );
+
     std::set<ij_tuple> tiles_set;
     for (int64_t j = 0; j < nt(); ++j) {
         for (int64_t i = 0; i < mt(); ++i) {
@@ -3809,6 +4071,9 @@ void BaseMatrix<scalar_t>::tileLayoutConvert(int device, Layout layout, bool res
 template <typename scalar_t>
 void BaseMatrix<scalar_t>::tileLayoutConvertOnDevices(Layout layout, bool reset)
 {
+    CallStack call( mpiRank(), "%s.base.%s( layout %c, reset %d )",
+                    cname(), __func__, char( layout ), reset );
+
     std::vector< std::set<ij_tuple> > tiles_set(num_devices());
     for (int64_t j = 0; j < nt(); ++j) {
         for (int64_t i = 0; i < mt(); ++i) {
@@ -3854,6 +4119,10 @@ template <typename scalar_t>
 void BaseMatrix<scalar_t>::tileLayoutReset(int64_t i, int64_t j, int device,
                                            Layout layout)
 {
+    CallStack call( mpiRank(), "%s.base.%s( i %lld, j %lld, dev %d, layout %c )",
+                    cname(), __func__,
+                    llong( i ), llong( j ), device, char( layout ) );
+
     tileLayoutConvert(i, j, device, layout, true);
 }
 
@@ -3876,6 +4145,9 @@ template <typename scalar_t>
 void BaseMatrix<scalar_t>::tileLayoutReset(std::set<ij_tuple>& tile_set,
                                            int device, Layout layout)
 {
+    CallStack call( mpiRank(), "%s.base.%s( set, dev %d, layout %c )",
+                    cname(), __func__, device, char( layout ) );
+
     tileLayoutConvert(tile_set, device, layout, true);
 }
 
@@ -3886,6 +4158,9 @@ void BaseMatrix<scalar_t>::tileLayoutReset(std::set<ij_tuple>& tile_set,
 template <typename scalar_t>
 void BaseMatrix<scalar_t>::tileLayoutReset()
 {
+    CallStack call( mpiRank(), "%s.base.%s()",
+                    cname(), __func__ );
+
     std::set<ij_tuple> tiles_set_host;
     std::vector< std::set<ij_tuple> > tiles_set_dev(num_devices());
 
@@ -4065,6 +4340,10 @@ std::tuple<int64_t, int64_t, int>
 template <typename scalar_t>
 void BaseMatrix<scalar_t>::eraseLocalWorkspaceTile(int64_t i, int64_t j)
 {
+    CallStack call( mpiRank(), "%s.base.%s( i %lld, j %lld )",
+                    cname(), __func__,
+                    llong( i ), llong( j ) );
+
     if (this->tileIsLocal( i, j )) {
         auto& tile_node = this->storage_->at( this->globalIndex( i, j ) );
 
@@ -4086,6 +4365,9 @@ void BaseMatrix<scalar_t>::eraseLocalWorkspaceTile(int64_t i, int64_t j)
 template <typename scalar_t>
 void BaseMatrix<scalar_t>::eraseLocalWorkspace()
 {
+    CallStack call( mpiRank(), "%s.base.%s()",
+                    cname(), __func__ );
+
     for (int64_t j = 0; j < this->nt(); ++j) {
         for (int64_t i = 0; i < this->mt(); ++i) {
             eraseLocalWorkspaceTile( i, j );
@@ -4104,6 +4386,9 @@ template <typename scalar_t>
 void BaseMatrix<scalar_t>::eraseLocalWorkspace(
     std::set<ij_tuple>& tile_set)
 {
+    CallStack call( mpiRank(), "%s.base.%s( set )",
+                    cname(), __func__ );
+
     for (auto ij : tile_set) {
         int64_t i = std::get<0>( ij );
         int64_t j = std::get<1>( ij );
@@ -4120,6 +4405,10 @@ void BaseMatrix<scalar_t>::eraseLocalWorkspace(
 template <typename scalar_t>
 void BaseMatrix<scalar_t>::eraseRemoteWorkspaceTile(int64_t i, int64_t j)
 {
+    CallStack call( mpiRank(), "%s.base.%s( i %lld, j %lld )",
+                    cname(), __func__,
+                    llong( i ), llong( j ) );
+
     if (! tileIsLocal( i, j ) ) { // erase remote tiles
         // This lock ensures that no other thread is trying to
         // remove this tile from the map of tiles.
@@ -4158,6 +4447,9 @@ void BaseMatrix<scalar_t>::eraseRemoteWorkspaceTile(int64_t i, int64_t j)
 template <typename scalar_t>
 void BaseMatrix<scalar_t>::eraseRemoteWorkspace()
 {
+    CallStack call( mpiRank(), "%s.base.%s()",
+                    cname(), __func__ );
+
     for (int64_t j = 0; j < nt(); ++j) {
         for (int64_t i = 0; i < mt(); ++i) {
             eraseRemoteWorkspaceTile( i, j );
@@ -4176,6 +4468,9 @@ template <typename scalar_t>
 void BaseMatrix<scalar_t>::eraseRemoteWorkspace(
     std::set<ij_tuple>& tile_set)
 {
+    CallStack call( mpiRank(), "%s.base.%s( set )",
+                    cname(), __func__ );
+
     for (auto ij : tile_set) {
         int64_t i = std::get<0>( ij );
         int64_t j = std::get<1>( ij );

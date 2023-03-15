@@ -34,6 +34,10 @@ void gemm(scalar_t alpha, Matrix<scalar_t>&& A,
           Layout layout, int priority, int64_t queue_index,
           Options const& opts )
 {
+    CallStack call( A.mpiRank(), "internal::%s<target %c>( layout %c, priority %d, queue %lld )",
+                    __func__, char( target ),
+                    char( layout ), priority, llong( queue_index ) );
+
     if (C.is_complex &&
         ((C.op() == Op::Trans &&
          (A.op() == Op::ConjTrans || B.op() == Op::ConjTrans)) ||
@@ -64,6 +68,10 @@ void gemm(internal::TargetType<Target::HostTask>,
           Layout layout, int priority, int64_t queue_index,
           Options const& opts )
 {
+    CallStack call( A.mpiRank(), "internal::%s( target %c, layout %c, priority %d, queue %lld )",
+                    __func__, char( Target::HostTask ), char( layout ),
+                    priority, llong( queue_index ) );
+
     // todo: optimize for the number of layout conversions,
     //       by watching 'layout' and 'C(i, j).layout()'
 
@@ -141,6 +149,10 @@ void gemm(internal::TargetType<Target::HostNest>,
           Layout layout, int priority, int64_t queue_index,
           Options const& opts )
 {
+    CallStack call( A.mpiRank(), "internal::%s( target %c, layout %c, priority %d, queue %lld )",
+                    __func__, char( Target::HostNest ), char( layout ),
+                    priority, llong( queue_index ) );
+
 #if defined(SLATE_HAVE_OMPTARGET) || defined(SLATE_SKIP_HOSTNEST)
     // SYCL/OMP-target-offload can't process this section
     slate_not_implemented("Target::HostNest isn't supported in this configuration.");
@@ -201,6 +213,10 @@ void gemm(internal::TargetType<Target::HostBatch>,
           Layout layout, int priority, int64_t queue_index,
           Options const& opts )
 {
+    CallStack call( A.mpiRank(), "internal::%s( target %c, layout %c, priority %d, queue %lld )",
+                    __func__, char( Target::HostBatch ), char( layout ),
+                    priority, llong( queue_index ) );
+
 #ifdef BLAS_HAVE_MKL
     using blas::conj;
     using std::swap;
@@ -388,6 +404,10 @@ void gemm(internal::TargetType<Target::Devices>,
           Options const& opts
           )
 {
+    CallStack call( A.mpiRank(), "internal::%s( target %c, layout %c, priority %d, queue %lld )",
+                    __func__, char( Target::Devices ), char( layout ),
+                    priority, llong( queue_index ) );
+
     using blas::conj;
     using std::swap;
     using ij_tuple = typename BaseMatrix<scalar_t>::ij_tuple;

@@ -100,6 +100,26 @@ std::vector< std::string >
 // =============================================================================
 namespace slate {
 
+//------------------------------------------------------------------------------
+/// Fills a tile with random numbers. The tile can be strided; it does
+/// not need to be contiguous.
+/// todo: Currently assumes tile is column-major.
+///
+template <typename scalar_t>
+void rand(
+    int64_t idist,
+    int64_t iseed[4],
+    Tile<scalar_t> A )
+{
+    int64_t lda = A.stride();
+    int64_t mb = A.mb();
+    int64_t nb = A.nb();
+    scalar_t* data = A.data();
+    for (int64_t j = 0; j < nb; ++j) {
+        lapack::larnv( idist, iseed, mb, &data[ j*lda ] );
+    }
+}
+
 // -----------------------------------------------------------------------------
 /// Generates Sigma vector of singular or eigenvalues, according to distribution.
 ///
@@ -117,6 +137,8 @@ void generate_sigma(
     std::vector< blas::real_type<typename matrix_type::value_type> >& Sigma,
     int64_t iseed[4] )
 {
+    CallStack call( A.mpiRank(), __func__ );
+
     using scalar_t = typename matrix_type::value_type;
     using real_t = blas::real_type<scalar_t>;
 
@@ -330,6 +352,8 @@ void generate_svd(
     std::vector< blas::real_type<scalar_t> >& Sigma,
     int64_t iseed[4] )
 {
+    CallStack call( A.mpiRank(), __func__ );
+
     using real_t = blas::real_type<scalar_t>;
     assert( A.m() >= A.n() );
 
@@ -369,21 +393,21 @@ void generate_svd(
     }
 
     // random U, m-by-min_mn
-    auto Tmp = U.emptyLike();
+    ///auto Tmp = U.emptyLike();
     #pragma omp parallel for collapse(2)
     for (int64_t j = 0; j < nt; ++j) {
         for (int64_t i = 0; i < mt; ++i) {
             if (U.tileIsLocal(i, j)) {
-                // lapack assume input tile is contigous in memory
-                // if the tiles are not contigous in memory, then
-                // insert temperory tiles to be passed to lapack
-                // then copy output tile to U.tile
-                Tmp.tileInsert(i, j);
-                auto Tmpij = Tmp(i, j);
-                scalar_t* data = Tmpij.data();
-                int64_t ldt = Tmpij.stride();
-                //lapack::larnv( idist_randn, params.iseed,
-                //    U.tileMb(i)*U.tileNb(j), Tmpij.data() );
+                /// // lapack assume input tile is contigous in memory
+                /// // if the tiles are not contigous in memory, then
+                /// // insert temperory tiles to be passed to lapack
+                /// // then copy output tile to U.tile
+                /// Tmp.tileInsert(i, j);
+                /// auto Tmpij = Tmp(i, j);
+                /// scalar_t* data = Tmpij.data();
+                /// int64_t ldt = Tmpij.stride();
+                /// //lapack::larnv( idist_randn, params.iseed,
+                /// //    U.tileMb(i)*U.tileNb(j), Tmpij.data() );
 
                 // Added local seed array for each process to prevent race condition contention of iseed
                 int64_t tile_iseed[4];
@@ -391,11 +415,12 @@ void generate_svd(
                 tile_iseed[1] = (iseed[1] + j/2048) % 4096;
                 tile_iseed[2] = (iseed[2] + i)      % 4096;
                 tile_iseed[3] = (iseed[3] + j*2)    % 4096;
-                for (int64_t k = 0; k < Tmpij.nb(); ++k) {
-                    lapack::larnv(idist_randn, tile_iseed, Tmpij.mb(), &data[k*ldt]);
-                }
-                slate::tile::gecopy( Tmp(i, j), U(i, j) );
-                Tmp.tileErase(i, j);
+                rand( idist_randn, tile_iseed, U( i, j ) );
+                /// for (int64_t k = 0; k < Tmpij.nb(); ++k) {
+                ///     lapack::larnv(idist_randn, tile_iseed, Tmpij.mb(), &data[k*ldt]);
+                /// }
+                /// slate::tile::gecopy( Tmp(i, j), U(i, j) );
+                /// Tmp.tileErase(i, j);
             }
         }
     }
@@ -413,15 +438,15 @@ void generate_svd(
 
     // random V, n-by-min_mn (stored column-wise in U)
     auto V = U.slice(0, n-1, 0, n-1);
-    auto Tmp_V = Tmp.slice(0, n-1, 0, n-1);
+    /// auto Tmp_V = Tmp.slice(0, n-1, 0, n-1);
     #pragma omp parallel for collapse(2)
     for (int64_t j = 0; j < min_mt_nt; ++j) {
         for (int64_t i = 0; i < nt; ++i) {
             if (V.tileIsLocal(i, j)) {
-                Tmp_V.tileInsert(i, j);
-                auto Tmpij = Tmp_V(i, j);
-                scalar_t* data = Tmpij.data();
-                int64_t ldt = Tmpij.stride();
+                /// Tmp_V.tileInsert(i, j);
+                /// auto Tmpij = Tmp_V(i, j);
+                /// scalar_t* data = Tmpij.data();
+                /// int64_t ldt = Tmpij.stride();
 
                 // Added local seed array for each process to prevent race condition contention of iseed
                 int64_t tile_iseed[4];
@@ -429,11 +454,12 @@ void generate_svd(
                 tile_iseed[1] = (iseed[1] + j/2048) % 4096;
                 tile_iseed[2] = (iseed[2] + i)      % 4096;
                 tile_iseed[3] = (iseed[3] + j*2)    % 4096;
-                for (int64_t k = 0; k < Tmpij.nb(); ++k) {
-                    lapack::larnv(idist_randn, tile_iseed, Tmpij.mb(), &data[k*ldt]);
-                }
-                slate::tile::gecopy( Tmp_V(i, j), V(i, j) );
-                Tmp_V.tileErase(i, j);
+                rand( idist_randn, tile_iseed, V( i, j ) );
+                /// for (int64_t k = 0; k < Tmpij.nb(); ++k) {
+                ///     lapack::larnv(idist_randn, tile_iseed, Tmpij.mb(), &data[k*ldt]);
+                /// }
+                /// slate::tile::gecopy( Tmp_V(i, j), V(i, j) );
+                /// Tmp_V.tileErase(i, j);
             }
         }
     }
@@ -503,6 +529,8 @@ void generate_heev(
     std::vector< blas::real_type<scalar_t> >& Sigma,
     int64_t iseed[4] )
 {
+    CallStack call( A.mpiRank(), __func__ );
+
     using real_t = blas::real_type<scalar_t>;
 
     // check inputs
@@ -520,16 +548,16 @@ void generate_heev(
     // random U, m-by-min_mn
     int64_t nt = U.nt();
     int64_t mt = U.mt();
-    auto Tmp = U.emptyLike();
+    ///auto Tmp = U.emptyLike();
 
     #pragma omp parallel for collapse(2)
     for (int64_t j = 0; j < nt; ++j) {
         for (int64_t i = 0; i < mt; ++i) {
             if (U.tileIsLocal(i, j)) {
-                Tmp.tileInsert(i, j);
-                auto Tmpij = Tmp(i, j);
-                scalar_t* data = Tmpij.data();
-                int64_t ldt = Tmpij.stride();
+                /// Tmp.tileInsert(i, j);
+                /// auto Tmpij = Tmp(i, j);
+                /// scalar_t* data = Tmpij.data();
+                /// int64_t ldt = Tmpij.stride();
 
                 // Added local seed array for each process to prevent race condition contention of iseed
                 int64_t tile_iseed[4];
@@ -537,11 +565,12 @@ void generate_heev(
                 tile_iseed[1] = (iseed[1] + j/2048) % 4096;
                 tile_iseed[2] = (iseed[2] + i)      % 4096;
                 tile_iseed[3] = (iseed[3] + j*2)    % 4096;
-                for (int64_t k = 0; k < Tmpij.nb(); ++k) {
-                    lapack::larnv(idist_rand, tile_iseed, Tmpij.mb(), &data[k*ldt]);
-                }
-                slate::tile::gecopy( Tmp(i, j), U(i, j) );
-                Tmp.tileErase(i, j);
+                rand( idist_rands, tile_iseed, U( i, j ) );
+                /// for (int64_t k = 0; k < Tmpij.nb(); ++k) {
+                ///     lapack::larnv(idist_rand, tile_iseed, Tmpij.mb(), &data[k*ldt]);
+                /// }
+                /// slate::tile::gecopy( Tmp(i, j), U(i, j) );
+                /// Tmp.tileErase(i, j);
             }
         }
     }
@@ -740,6 +769,8 @@ void decode_matrix(
     blas::real_type<scalar_t>& sigma_max,
     bool& dominant)
 {
+    CallStack call( A.mpiRank(), __func__ );
+
     using real_t = blas::real_type<scalar_t>;
 
     const real_t ufl = std::numeric_limits< real_t >::min();      // == lamch("safe min")  ==  1e-38 or  2e-308
@@ -993,7 +1024,6 @@ void decode_matrix(
 /// Generates an arbitrary seed that is unlikely to be repeated
 void configure_seed(MPI_Comm comm, int64_t user_seed, int64_t iseed[4])
 {
-
     // if the given seed is -1, generate a new seed
     if (user_seed == -1) {
         // use the highest resolution clock as the seed
@@ -1161,6 +1191,8 @@ void generate_matrix(
     slate::Matrix<scalar_t>& A,
     std::vector< blas::real_type<scalar_t> >& Sigma )
 {
+    CallStack call( A.mpiRank(), "%s: Matrix, with Sigma", __func__ );
+
     using real_t = blas::real_type<scalar_t>;
 
     // Constants
@@ -1488,7 +1520,6 @@ void generate_matrix(
             if (type == TestMatrixType::randb) {
                 idist = (int64_t) TestMatrixType::rand;
             }
-            auto Tmp = A.emptyLike();
             #pragma omp parallel for collapse(2)
             for (int64_t j = 0; j < nt; ++j) {
                 for (int64_t i = 0; i < mt; ++i) {
@@ -1582,6 +1613,8 @@ void generate_matrix(
     slate::BaseTrapezoidMatrix<scalar_t>& A,
     std::vector< blas::real_type<scalar_t> >& Sigma )
 {
+    CallStack call( A.mpiRank(), "%s: BaseTrapezoid, with Sigma", __func__ );
+
     using real_t = blas::real_type<scalar_t>;
 
     // Constants
@@ -1830,6 +1863,8 @@ void generate_matrix(
     slate::HermitianMatrix<scalar_t>& A,
     std::vector< blas::real_type<scalar_t> >& Sigma )
 {
+    CallStack call( A.mpiRank(), "%s: Hermitian, with Sigma", __func__ );
+
     slate::BaseTrapezoidMatrix<scalar_t>& TZ = A;
     generate_matrix( params, TZ, Sigma );
 
@@ -1847,6 +1882,7 @@ void generate_matrix(
     }
     A.tileUpdateAllOrigin();
 }
+
 // -----------------------------------------------------------------------------
 /// Overload without Sigma.
 /// @see generate_matrix()
@@ -1857,6 +1893,8 @@ void generate_matrix(
     MatrixParams& params,
     slate::Matrix<scalar_t>& A )
 {
+    CallStack call( A.mpiRank(), "%s: Matrix, no Sigma", __func__ );
+
     using real_t = blas::real_type<scalar_t>;
     std::vector<real_t> dummy;
     generate_matrix( params, A, dummy );
@@ -1871,6 +1909,8 @@ void generate_matrix(
     MatrixParams& params,
     slate::BaseTrapezoidMatrix<scalar_t>& A )
 {
+    CallStack call( A.mpiRank(), "%s: BaseTrapezoid, no Sigma", __func__ );
+
     using real_t = blas::real_type<scalar_t>;
     std::vector<real_t> dummy;
     generate_matrix( params, A, dummy );
@@ -1885,10 +1925,13 @@ void generate_matrix(
     MatrixParams& params,
     slate::HermitianMatrix<scalar_t>& A )
 {
+    CallStack call( A.mpiRank(), "%s: Hermitian, no Sigma", __func__ );
+
     using real_t = blas::real_type<scalar_t>;
     std::vector<real_t> dummy;
     generate_matrix( params, A, dummy );
 }
+
 // -----------------------------------------------------------------------------
 // explicit instantiations
 template
@@ -1994,4 +2037,5 @@ void decode_matrix<std::complex<double>>(
     blas::real_type<std::complex<double>>& condD,
     blas::real_type<std::complex<double>>& sigma_max,
     bool& dominant);
+
 } // namespace slate

@@ -22,6 +22,8 @@
 template<typename scalar_t>
 void test_gemm_work(Params& params, bool run)
 {
+using slate::CallStack;
+CallStack::comment( "-------------------- test_gemm_work\n" );
     using real_t = blas::real_type<scalar_t>;
     using slate::Norm;
 
@@ -89,6 +91,7 @@ void test_gemm_work(Params& params, bool run)
     int mpi_rank, myrow, mycol;
     MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
     gridinfo( mpi_rank, grid_order, p, q, &myrow, &mycol );
+slate::CallStack call( mpi_rank, __func__ );
 
     // Matrix A: figure out local size.
     int64_t mlocA = num_local_rows_cols(Am, nb, myrow, p);
@@ -114,20 +117,27 @@ void test_gemm_work(Params& params, bool run)
         C_data.resize( lldC * nlocC );
     }
 
+CallStack::comment( "-------------------- Matrix A, B, C\n" );
     slate::Matrix<scalar_t> A, B, C;
     slate::Target origin_target = origin2target(origin);
     if (origin != slate::Origin::ScaLAPACK) {
+CallStack::comment( "-------------------- A = Matrix\n" );
         // SLATE allocates CPU or GPU tiles.
         A = slate::Matrix<scalar_t>(
-            Am, An, nb, nb, grid_order, p, q, MPI_COMM_WORLD );
+            "A", Am, An, nb, nb, grid_order, p, q, MPI_COMM_WORLD );
+CallStack::comment( "-------------------- A.insertLocalTiles\n" );
         A.insertLocalTiles( origin_target );
 
+CallStack::comment( "-------------------- B = Matrix\n" );
         B = slate::Matrix<scalar_t>(
-            Bm, Bn, nb, nb, grid_order, p, q, MPI_COMM_WORLD );
+            "B", Bm, Bn, nb, nb, grid_order, p, q, MPI_COMM_WORLD );
+CallStack::comment( "-------------------- B.insertLocalTiles\n" );
         B.insertLocalTiles( origin_target );
 
+CallStack::comment( "-------------------- C = Matrix\n" );
         C = slate::Matrix<scalar_t>(
-            Cm, Cn, nb, nb, grid_order, p, q, MPI_COMM_WORLD );
+            "C", Cm, Cn, nb, nb, grid_order, p, q, MPI_COMM_WORLD );
+CallStack::comment( "-------------------- C.insertLocalTiles\n" );
         C.insertLocalTiles( origin_target );
     }
     else {
@@ -140,11 +150,15 @@ void test_gemm_work(Params& params, bool run)
             Cm, Cn, &C_data[0], lldC, nb, nb, grid_order, p, q, MPI_COMM_WORLD );
     }
 
+CallStack::comment( "-------------------- generate A\n" );
     slate::generate_matrix(params.matrix, A);
+CallStack::comment( "-------------------- generate B\n" );
     slate::generate_matrix(params.matrixB, B);
+CallStack::comment( "-------------------- generate C\n" );
     slate::generate_matrix(params.matrixC, C);
 
     #ifdef SLATE_HAVE_SCALAPACK
+CallStack::comment( "-------------------- Cref\n" );
         // if reference run is required, copy test data.
         std::vector<scalar_t> Cref_data;
         slate::Matrix<scalar_t> Cref;
@@ -172,6 +186,7 @@ void test_gemm_work(Params& params, bool run)
     slate_assert(A.nt() == B.mt());
 
     #ifdef SLATE_HAVE_SCALAPACK
+CallStack::comment( "-------------------- norms for check\n" );
         // If reference run is required, record norms to be used in the check/ref.
         real_t A_norm=0, B_norm=0, C_orig_norm=0;
         if (ref) {
@@ -181,24 +196,37 @@ void test_gemm_work(Params& params, bool run)
         }
     #endif
 
+CallStack::comment( "-------------------- Matrix X, Y, Z\n" );
     // If check run, perform first half of SLATE residual check.
     slate::Matrix<scalar_t> X, Y, Z;
     if (check && ! ref) {
+CallStack::comment( "-------------------- X = Matrix\n" );
         // Compute Y = alpha A * (B * X) + (beta C * X).
-        X = slate::Matrix<scalar_t>( n, nrhs, nb, p, q, MPI_COMM_WORLD );
+        X = slate::Matrix<scalar_t>( "X", n, nrhs, nb, nb, grid_order, p, q, MPI_COMM_WORLD );
         X.insertLocalTiles(origin_target);
-        Y = slate::Matrix<scalar_t>( m, nrhs, nb, p, q, MPI_COMM_WORLD );
+
+CallStack::comment( "-------------------- Y = Matrix\n" );
+        Y = slate::Matrix<scalar_t>( "Y", m, nrhs, nb, nb, grid_order, p, q, MPI_COMM_WORLD );
         Y.insertLocalTiles(origin_target);
-        Z = slate::Matrix<scalar_t>( k, nrhs, nb, p, q, MPI_COMM_WORLD );
+
+CallStack::comment( "-------------------- Z = Matrix\n" );
+        Z = slate::Matrix<scalar_t>( "Z", k, nrhs, nb, nb, grid_order, p, q, MPI_COMM_WORLD );
         Z.insertLocalTiles(origin_target);
+
+CallStack::comment( "-------------------- generate X\n" );
         MatrixParams mp;
         mp.kind.set_default( "rand" );
         generate_matrix( mp, X );
 
+CallStack::comment( "-------------------- Z = B X\n" );
         // Z = B * X;
         slate::multiply( one, B, X, zero, Z, opts );
+
+CallStack::comment( "-------------------- Y = beta C0 X\n" );
         // Y = beta * C * X
         slate::multiply( beta, C, X, zero, Y, opts );
+
+CallStack::comment( "-------------------- Y = alpha A Z + Y = alpha A (B X) + (beta C0 X)\n" );
         // Y = alpha * A * Z + Y;
         slate::multiply( alpha, A, Z, one, Y, opts );
     }
@@ -217,6 +245,7 @@ void test_gemm_work(Params& params, bool run)
 
         double time = barrier_get_wtime(MPI_COMM_WORLD);
 
+CallStack::comment( "-------------------- slate::multiply C = alpha A B + beta C0\n" );
         //==================================================
         // Run SLATE test.
         // C = alpha A B + beta C.
@@ -238,7 +267,7 @@ void test_gemm_work(Params& params, bool run)
         if (trace) slate::trace::Trace::finish();
 
         if (verbose >= 2) {
-            C.tileGetAllForReading( slate::HostNum, slate::LayoutConvert::None );
+            //C.tileGetAllForReading( slate::HostNum, slate::LayoutConvert::None );
             print_matrix( "C_out", C, params );
         }
 
@@ -248,9 +277,12 @@ void test_gemm_work(Params& params, bool run)
     }
 
     if (check && ! ref) {
+CallStack::comment( "-------------------- y_norm\n" );
         // SLATE residual check.
         // Check error, C*X - Y.
         real_t y_norm = slate::norm( norm, Y, opts );
+
+CallStack::comment( "-------------------- multiply Y = C X - Y = (alpha A B + beta C0) X - [ alpha A (B X) + (beta C0 X) ]\n" );
         // Y = C * X - Y
         slate::multiply( one, C, X, -one, Y );
         // error = norm( Y ) / y_norm
@@ -295,9 +327,12 @@ void test_gemm_work(Params& params, bool run)
 
             if (origin != slate::Origin::ScaLAPACK) {
                 // Copy SLATE result back from GPU or CPU tiles.
+CallStack::comment( "-------------------- copy A => A_desc\n" );
                 copy(A, &A_data[0], A_desc);
+CallStack::comment( "-------------------- copy B => B_desc\n" );
                 copy(B, &B_data[0], B_desc);
                 // todo: C_data not needed anymore?
+CallStack::comment( "-------------------- copy C => C_desc\n" );
                 copy(C, &C_data[0], C_desc);
             }
 
@@ -308,6 +343,7 @@ void test_gemm_work(Params& params, bool run)
             //==================================================
             double time = barrier_get_wtime(MPI_COMM_WORLD);
 
+CallStack::comment( "-------------------- scalapack_pgemm\n" );
             scalapack_pgemm(op2str(transA), op2str(transB), m, n, k, alpha,
                             &A_data[0], 1, 1, A_desc,
                             &B_data[0], 1, 1, B_desc, beta,
@@ -317,14 +353,17 @@ void test_gemm_work(Params& params, bool run)
 
             print_matrix( "Cref_out", Cref, params );
 
+CallStack::comment( "-------------------- C -= Cref\n" );
             // get differences C = C - Cref
             slate::add(-one, Cref, one, C);
 
             print_matrix( "Diff", C, params );
 
+CallStack::comment( "-------------------- C norm\n" );
             // norm(C - Cref)
             real_t C_diff_norm = slate::norm(norm, C);
 
+CallStack::comment( "-------------------- compute error\n" );
             real_t error = C_diff_norm
                         / (sqrt(real_t(k) + 2) * std::abs(alpha) * A_norm * B_norm
                             + 2 * std::abs(beta) * C_orig_norm);
@@ -344,6 +383,10 @@ void test_gemm_work(Params& params, bool run)
                 printf( "ScaLAPACK not available\n" );
         #endif
     }
+
+CallStack::comment( "-------------------- test_gemm_work done\n" );
+if (true)
+    CallStack::print( MPI_COMM_WORLD );
 }
 
 // -----------------------------------------------------------------------------

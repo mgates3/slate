@@ -68,6 +68,8 @@ void gemm(scalar_t alpha, Matrix<scalar_t>& A,
           scalar_t beta,  Matrix<scalar_t>& C,
           Options const& opts)
 {
+    CallStack call( A.mpiRank(), __func__ );
+
     Method method = get_option(
         opts, Option::MethodGemm, MethodGemm::Auto );
 

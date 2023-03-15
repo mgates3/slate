@@ -16,6 +16,7 @@ Memory::StaticConstructor Memory::static_constructor_;
 Memory::Memory(size_t block_size):
     block_size_(block_size)
 {
+CallStack call( -1, "Memory.%s( block_size %llu )", __func__, (unsigned long long) block_size );
     // touch maps to create entries;
     // this allows available() and capacity() to be const by using at()
     free_blocks_[ HostNum ];
@@ -30,6 +31,7 @@ Memory::Memory(size_t block_size):
 /// Destructor frees all allocations on host and devices.
 Memory::~Memory()
 {
+CallStack call( -1, "Memory.%s", __func__ );
     // This is just a check that an explicit clear was called before
     // the destructor happens.  For device/accelerator's, the queue is
     // needed to release memory (and can't be passed in here).  So to
@@ -49,6 +51,7 @@ Memory::~Memory()
 // todo: merge with addDeviceBlocks by recognizing HostNum?
 void Memory::addHostBlocks(int64_t num_blocks)
 {
+CallStack call( -1, "Memory.%s [[no-op]]", __func__ );
 /*
     // or std::byte* (C++17)
     uint8_t* host_mem;
@@ -66,6 +69,8 @@ void Memory::addHostBlocks(int64_t num_blocks)
 ///
 void Memory::addDeviceBlocks(int device, int64_t num_blocks, blas::Queue *queue)
 {
+CallStack call( -1, "Memory.%s( dev %d, num_blocks %lld, queue %p )",
+                __func__, device, llong( num_blocks ), (void*) queue );
     // or std::byte* (C++17)
     uint8_t* dev_mem;
     dev_mem = (uint8_t*) allocDeviceMemory(device, block_size_*num_blocks, queue);
@@ -81,6 +86,7 @@ void Memory::addDeviceBlocks(int device, int64_t num_blocks, blas::Queue *queue)
 // todo: merge with clearDeviceBlocks by recognizing HostNum?
 void Memory::clearHostBlocks()
 {
+CallStack call( -1, "Memory.%s [[no-op]]", __func__ );
 /*
     Debug::checkHostMemoryLeaks(*this);
 
@@ -102,6 +108,7 @@ void Memory::clearHostBlocks()
 ///
 void Memory::clearDeviceBlocks(int device, blas::Queue *queue)
 {
+CallStack call( -1, "Memory.%s( dev %d, queue %p )", __func__, device, (void*) queue );
     Debug::checkDeviceMemoryLeaks(*this, device);
 
     while (! free_blocks_[device].empty())
@@ -140,6 +147,8 @@ void* Memory::alloc(int device, size_t size, blas::Queue* queue)
             }
         }
     }
+CallStack call( -1, "Memory.%s( dev %d, size %llu, queue %p ) => %p",
+                __func__, device, (unsigned long long) size, (void*) queue, block );
     return block;
 }
 
@@ -149,6 +158,9 @@ void* Memory::alloc(int device, size_t size, blas::Queue* queue)
 ///
 void Memory::free(void* block, int device)
 {
+CallStack call( -1, "Memory.%s( block %p, dev %d ) => return to pool",
+                __func__, block, device );
+
     if (device == HostNum) {
         //std::free(block);
         delete[] (char*)block;
@@ -173,6 +185,9 @@ void* Memory::allocBlock(int device, blas::Queue *queue)
         block = allocDeviceMemory(device, block_size_, queue);
 
     capacity_[device] += 1;
+
+CallStack call( -1, "Memory.%s( dev %d, queue %p ) => %p",
+                __func__, device, (void*) queue, block );
     return block;
 }
 
@@ -181,6 +196,7 @@ void* Memory::allocBlock(int device, blas::Queue *queue)
 ///
 void* Memory::allocHostMemory(size_t size)
 {
+CallStack call( -1, "Memory.%s [[deprecated]]", __func__ );
     void* host_mem;
     host_mem = malloc(size);
     assert(host_mem != nullptr);
@@ -194,6 +210,9 @@ void* Memory::allocHostMemory(size_t size)
 ///
 void* Memory::allocDeviceMemory(int device, size_t size, blas::Queue *queue)
 {
+CallStack call( -1, "Memory.%s( dev %d, size %llu, queue %p )",
+                __func__, device, (unsigned long long) size, (void*) queue );
+
     void* dev_mem = blas::device_malloc<char>(size, *queue);
     allocated_mem_[device].push(dev_mem);
 
@@ -205,6 +224,7 @@ void* Memory::allocDeviceMemory(int device, size_t size, blas::Queue *queue)
 ///
 void Memory::freeHostMemory(void* host_mem)
 {
+CallStack call( -1, "Memory.%s [[deprecated]]", __func__ );
     std::free(host_mem);
 }
 
@@ -213,6 +233,9 @@ void Memory::freeHostMemory(void* host_mem)
 ///
 void Memory::freeDeviceMemory(int device, void* dev_mem, blas::Queue *queue)
 {
+CallStack call( -1, "Memory.%s( dev %d, mem %p, queue %p )",
+                __func__, device, dev_mem, queue );
+
     blas::device_free(dev_mem, *queue);
 }
 

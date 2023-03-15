@@ -37,6 +37,8 @@ void gemmA(
     scalar_t beta,  Matrix<scalar_t>& C,
     Options const& opts )
 {
+    CallStack call( A.mpiRank(), __func__ );
+
     using BcastList = typename Matrix<scalar_t>::BcastList;
 
     // Assumes column major
@@ -243,6 +245,8 @@ void gemmA(
     scalar_t beta,  Matrix<scalar_t>& C,
     Options const& opts )
 {
+    CallStack call( A.mpiRank(), "%s dispatch", __func__ );
+
     Target target = get_option( opts, Option::Target, Target::HostTask );
 
     switch (target) {

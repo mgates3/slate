@@ -651,7 +651,7 @@ void print(
         return;
 
     if (A.mpiRank() == 0) {
-        std::string msg = std::string( "% " ) + label + ": slate::Matrix ";
+        std::string msg = std::string( "% " ) + label + " " + A.name() + ": slate::Matrix ";
         msg += std::to_string( A.m() ) + "-by-" + std::to_string( A.n() ) + ", "
             +  std::to_string( A.mt() ) + "-by-" + std::to_string( A.nt() )
             +  " tiles, tileSize " + std::to_string( A.tileMb(0) ) + "-by-"

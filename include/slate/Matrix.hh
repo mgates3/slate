@@ -38,8 +38,14 @@ public:
            MPI_Comm mpi_comm);
 
     //----------
-    Matrix( int64_t m, int64_t n, int64_t mb, int64_t nb,
+    Matrix( const char* name, int64_t m, int64_t n, int64_t mb, int64_t nb,
             GridOrder order, int p, int q, MPI_Comm mpi_comm );
+
+    /// With name = "_".
+    Matrix( int64_t m, int64_t n, int64_t mb, int64_t nb,
+            GridOrder order, int p, int q, MPI_Comm mpi_comm )
+        : Matrix( "_", m, n, mb, nb, GridOrder::Col, p, q, mpi_comm )
+    {}
 
     /// With order = Col.
     Matrix( int64_t m, int64_t n, int64_t mb, int64_t nb,
@@ -157,7 +163,10 @@ public:
     int64_t getMaxHostTiles();
     int64_t getMaxDeviceTiles(int device);
     void allocateBatchArrays(int64_t batch_size=0, int64_t num_arrays=1);
+
+    [[deprecated]]
     void reserveHostWorkspace();
+
     void reserveDeviceWorkspace();
     void gather(scalar_t* A, int64_t lda);
     void insertLocalTiles(Target origin=Target::Host);
@@ -169,7 +178,9 @@ public:
 template <typename scalar_t>
 Matrix<scalar_t>::Matrix():
     BaseMatrix<scalar_t>()
-{}
+{
+    CallStack call( -1, "(empty).matrix.%s() [[post]]", __func__ );
+}
 
 //------------------------------------------------------------------------------
 /// Constructor creates an m-by-n matrix, with no tiles allocated,
@@ -209,7 +220,10 @@ Matrix<scalar_t>::Matrix(
     MPI_Comm mpi_comm)
     : BaseMatrix<scalar_t>(m, n, inTileMb, inTileNb, inTileRank, inTileDevice,
                            mpi_comm)
-{}
+{
+    CallStack call( this->mpiRank(), "%s.matrix.%s( lambdas ) [[post]]",
+                    "????", __func__ );
+}
 
 //------------------------------------------------------------------------------
 /// Constructor creates an m-by-n matrix, with no tiles allocated,
@@ -244,10 +258,12 @@ Matrix<scalar_t>::Matrix(
 ///
 template <typename scalar_t>
 Matrix<scalar_t>::Matrix(
-    int64_t m, int64_t n, int64_t mb, int64_t nb,
+    const char* name, int64_t m, int64_t n, int64_t mb, int64_t nb,
     GridOrder order, int p, int q, MPI_Comm mpi_comm)
-    : BaseMatrix<scalar_t>( m, n, mb, nb, order, p, q, mpi_comm )
-{}
+    : BaseMatrix<scalar_t>( name, m, n, mb, nb, order, p, q, mpi_comm )
+{
+    CallStack call( this->mpiRank(), "%s.matrix.%s() [[post]]", name, __func__ );
+}
 
 //------------------------------------------------------------------------------
 /// [static]
@@ -293,6 +309,10 @@ Matrix<scalar_t> Matrix<scalar_t>::fromLAPACK(
     scalar_t* A, int64_t lda, int64_t mb, int64_t nb,
     int p, int q, MPI_Comm mpi_comm)
 {
+    CallStack call( -1, "matrix.%s( m %lld, n %lld, A %p, lda %lld, mb %lld, nb %lld, p %d, q %d )",
+                    __func__, llong( m ), llong( n ), (void*) A, llong( lda ),
+                    llong( mb ), llong( nb ), p, q );
+
     return Matrix<scalar_t>( m, n, A, lda, mb, nb,
                              GridOrder::Col, p, q, mpi_comm, false );
 }
@@ -347,6 +367,10 @@ Matrix<scalar_t> Matrix<scalar_t>::fromScaLAPACK(
     scalar_t* A, int64_t lda, int64_t mb, int64_t nb,
     GridOrder order, int p, int q, MPI_Comm mpi_comm)
 {
+    CallStack call( -1, "matrix.%s( m %lld, n %lld, A %p, lda %lld, mb %lld, nb %lld, order %c, p %d, q %d )",
+                    __func__, llong( m ), llong( n ), (void*) A, llong( lda ),
+                    char( order ), llong( mb ), llong( nb ), p, q );
+
     return Matrix<scalar_t>( m, n, A, lda, mb, nb, order, p, q, mpi_comm, true );
 }
 
@@ -397,6 +421,10 @@ Matrix<scalar_t> Matrix<scalar_t>::fromDevices(
     scalar_t** Aarray, int num_devices, int64_t lda,
     int64_t mb, int64_t nb, int p, int q, MPI_Comm mpi_comm)
 {
+    CallStack call( -1, "matrix.%s( m %lld, n %lld, Aarray, num_devices %d, lda %lld, mb %lld, nb %lld, p %d, q %d )",
+                    __func__, llong( m ), llong( n ), num_devices, llong( lda ),
+                    llong( mb ), llong( nb ), p, q );
+
     return Matrix<scalar_t>(m, n, Aarray, num_devices, lda, mb, nb,
                             p, q, mpi_comm);
 }
@@ -430,6 +458,10 @@ template <typename out_scalar_t>
 Matrix<out_scalar_t> Matrix<scalar_t>::emptyLike(
     int64_t mb, int64_t nb, Op deepOp)
 {
+    CallStack call( this->mpiRank(), "%s.matrix.%s( mb %lld, nb %lld, op %c )",
+                    this->cname(), __func__,
+                    llong( mb ), llong( nb ), char( deepOp ) );
+
     auto B = this->template baseEmptyLike<out_scalar_t>(mb, nb, deepOp);
     return Matrix<out_scalar_t>(B, 0, B.mt()-1, 0, B.nt()-1);
 }
@@ -467,6 +499,10 @@ template <typename out_scalar_t>
 Matrix<out_scalar_t> Matrix<scalar_t>::emptyLike(
     BaseMatrix<scalar_t>& orig, int64_t mb, int64_t nb, Op deepOp)
 {
+    CallStack call( orig.mpiRank(), "%s.matrix.%s( mb %lld, nb %lld, op %c )",
+                    orig.cname(), __func__, (void*) &orig,
+                    llong( mb ), llong( nb ), char( deepOp ) );
+
     auto B = orig.template baseEmptyLike<out_scalar_t>(mb, nb, deepOp);
     return Matrix<out_scalar_t>(B, 0, B.mt()-1, 0, B.nt()-1);
 }
@@ -487,6 +523,12 @@ Matrix<scalar_t>::Matrix(
     GridOrder order, int p, int q, MPI_Comm mpi_comm, bool is_scalapack)
     : BaseMatrix<scalar_t>( m, n, mb, nb, order, p, q, mpi_comm )
 {
+    CallStack call( this->mpiRank(),
+                    "%s.%s( from(Sca)LAPACK: m %lld, n %lld, A %p, lda %lld, mb %lld, nb %lld, order %c, p %d, q %d )\n",
+                    this->cname(), __func__,
+                    llong( m ), llong( n ), (void*) A, llong( lda ),
+                    llong( mb ), llong( nb ), char( order ), p, q );
+
     // ii, jj are row, col indices
     // ii_local and jj_local are the local array indices in A
     // block-cyclic layout (indxg2l)
@@ -528,6 +570,12 @@ Matrix<scalar_t>::Matrix(
     int64_t mb, int64_t nb, int p, int q, MPI_Comm mpi_comm)
     : BaseMatrix<scalar_t>(m, n, mb, nb, p, q, mpi_comm)
 {
+    CallStack call( this->mpiRank(),
+                    "%s.%s( fromDevices: m %lld, n %lld, num_devices %d, lda %lld, mb %lld, nb %lld, p %d, q %d )\n",
+                    this->cname(), __func__,
+                    llong( m ), llong( n ), num_devices, llong( lda ),
+                    llong( mb ), llong( nb ), p, q );
+
     slate_error_if(this->num_devices() != num_devices);
 
     // ii, jj are row, col indices
@@ -585,6 +633,11 @@ Matrix<scalar_t>::Matrix(
     int64_t j1, int64_t j2)
     : BaseMatrix<scalar_t>(orig, i1, i2, j1, j2)
 {
+    CallStack call( this->mpiRank(), "%s.matrix.%s( sub %lld : %lld, %lld : %lld )",
+                    this->cname(), __func__,
+                    llong( i1 ), llong( i2 ),
+                    llong( j1 ), llong( j2 ) );
+
     this->uplo_ = Uplo::General;
 }
 
@@ -609,6 +662,11 @@ Matrix<scalar_t> Matrix<scalar_t>::sub(
     int64_t i1, int64_t i2,
     int64_t j1, int64_t j2)
 {
+    CallStack call( this->mpiRank(), "%s.matrix.%s( %lld : %lld, %lld : %lld )",
+                    this->cname(), __func__,
+                    llong( i1 ), llong( i2 ),
+                    llong( j1 ), llong( j2 ) );
+
     return Matrix<scalar_t>(*this, i1, i2, j1, j2);
 }
 
@@ -628,6 +686,11 @@ Matrix<scalar_t>::Matrix(
     BaseMatrix<scalar_t>& orig, typename BaseMatrix<scalar_t>::Slice slice)
     : BaseMatrix<scalar_t>(orig, slice)
 {
+    CallStack call( this->mpiRank(), "%s.matrix.%s( slice %lld : %lld, %lld : %lld )",
+                    this->cname(), __func__,
+                    llong( slice.row1 ), llong( slice.row2 ),
+                    llong( slice.col1 ), llong( slice.col2 ) );
+
     this->uplo_ = Uplo::General;
 }
 
@@ -653,6 +716,11 @@ Matrix<scalar_t> Matrix<scalar_t>::slice(
     int64_t row1, int64_t row2,
     int64_t col1, int64_t col2)
 {
+    CallStack call( this->mpiRank(), "%s.matrix.%s( %lld : %lld, %lld : %lld )",
+                    this->cname(), __func__,
+                    llong( row1 ), llong( row2 ),
+                    llong( col1 ), llong( col2 ) );
+
     return Matrix<scalar_t>(*this,
         typename BaseMatrix<scalar_t>::Slice(row1, row2, col1, col2));
 }
@@ -677,6 +745,9 @@ void swap(Matrix<scalar_t>& A, Matrix<scalar_t>& B)
 template <typename scalar_t>
 int64_t Matrix<scalar_t>::getMaxHostTiles()
 {
+    CallStack call( this->mpiRank(), "%s.matrix.%s()",
+                    this->cname(), __func__ );
+
     int64_t num_tiles = 0;
     for (int64_t j = 0; j < this->nt(); ++j)
         for (int64_t i = 0; i < this->mt(); ++i)
@@ -693,6 +764,9 @@ int64_t Matrix<scalar_t>::getMaxHostTiles()
 template <typename scalar_t>
 int64_t Matrix<scalar_t>::getMaxDeviceTiles(int device)
 {
+    CallStack call( this->mpiRank(), "%s.matrix.%s( dev %d )",
+                    this->cname(), __func__, device );
+
     int64_t num_tiles = 0;
     for (int64_t j = 0; j < this->nt(); ++j)
         for (int64_t i = 0; i < this->mt(); ++i)
@@ -720,6 +794,10 @@ template <typename scalar_t>
 void Matrix<scalar_t>::allocateBatchArrays(
     int64_t batch_size, int64_t num_arrays)
 {
+    CallStack call( this->mpiRank(), "%s.matrix.%s( size %lld, num %lld )",
+                    this->cname(), __func__,
+                    llong( batch_size ), llong( num_arrays ) );
+
     if (batch_size == 0) {
         for (int device = 0; device < this->num_devices_; ++device)
             batch_size = std::max(batch_size, getMaxDeviceTiles(device));
@@ -732,6 +810,9 @@ void Matrix<scalar_t>::allocateBatchArrays(
 template <typename scalar_t>
 void Matrix<scalar_t>::reserveHostWorkspace()
 {
+    CallStack call( this->mpiRank(), "%s.matrix.%s()",
+                    this->cname(), __func__ );
+
     this->storage_->reserveHostWorkspace(getMaxHostTiles());
 }
 
@@ -740,6 +821,9 @@ void Matrix<scalar_t>::reserveHostWorkspace()
 template <typename scalar_t>
 void Matrix<scalar_t>::reserveDeviceWorkspace()
 {
+    CallStack call( this->mpiRank(), "%s.matrix.%s()",
+                    this->cname(), __func__ );
+
     int64_t num_tiles = 0;
     for (int device = 0; device < this->num_devices_; ++device)
         num_tiles = std::max(num_tiles, getMaxDeviceTiles(device));
@@ -753,6 +837,11 @@ void Matrix<scalar_t>::reserveDeviceWorkspace()
 template <typename scalar_t>
 void Matrix<scalar_t>::gather(scalar_t* A, int64_t lda)
 {
+    CallStack call( this->mpiRank(),
+                    "%s.%s( A %p, lda %lld )\n",
+                    this->cname(), __func__,
+                    (void*) A, llong( lda ) );
+
     // this code assumes the matrix is not transposed
     Op op_save = this->op();
     this->op_ = Op::NoTrans;
@@ -811,6 +900,9 @@ void Matrix<scalar_t>::gather(scalar_t* A, int64_t lda)
 template <typename scalar_t>
 void Matrix<scalar_t>::insertLocalTiles(Target origin)
 {
+    CallStack call( this->mpiRank(), "%s.matrix.%s( origin %c )",
+                    this->cname(), __func__, char( origin ) );
+
     bool on_devices = (origin == Target::Devices);
     if (on_devices)
         reserveDeviceWorkspace();
@@ -830,6 +922,9 @@ void Matrix<scalar_t>::insertLocalTiles(Target origin)
 template <typename scalar_t>
 void Matrix<scalar_t>::redistribute(Matrix<scalar_t>& A)
 {
+    CallStack call( this->mpiRank(), "%s.matrix.%s( %s )",
+                    this->cname(), __func__, A.cname() );
+
     int64_t mt = this->mt();
     int64_t nt = this->nt();
 

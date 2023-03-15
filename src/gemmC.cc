@@ -32,6 +32,8 @@ void gemmC(
     scalar_t beta,  Matrix<scalar_t>& C,
     Options const& opts )
 {
+    CallStack call( A.mpiRank(), __func__ );
+
     using BcastListTag = typename Matrix<scalar_t>::BcastListTag;
 
     trace::Block gemm_block( "gemm" );
@@ -249,6 +251,8 @@ void gemmC(
     scalar_t beta,  Matrix<scalar_t>& C,
     Options const& opts)
 {
+    CallStack call( A.mpiRank(), "%s dispatch", __func__ );
+
     Target target = get_option( opts, Option::Target, Target::HostTask );
 
     switch (target) {

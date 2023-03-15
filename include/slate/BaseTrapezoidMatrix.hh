@@ -93,7 +93,10 @@ public:
     int64_t getMaxHostTiles();
     int64_t getMaxDeviceTiles(int device);
     void allocateBatchArrays(int64_t batch_size=0, int64_t num_arrays=1);
+
+    [[deprecated]]
     void reserveHostWorkspace();
+
     void reserveDeviceWorkspace();
     void gather(scalar_t* A, int64_t lda);
     Uplo uplo_logical() const { return this->uploLogical(); }  ///< @deprecated

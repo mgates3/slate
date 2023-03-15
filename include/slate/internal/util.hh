@@ -11,10 +11,11 @@
 
 #include "slate/internal/mpi.hh"
 
-#include <cmath>
-
 #include <blas.hh>
+
+#include <cmath>
 #include <atomic>
+#include <omp.h>
 
 namespace slate {
 
@@ -140,6 +141,41 @@ public:
 private:
     int count_;
     std::atomic<int> passed_;
+};
+
+//------------------------------------------------------------------------------
+/// Prints out function call, indented to indicate nesting. Example:
+///     void foo( int x ) {
+///         CallStack call( 0, "%s( %d )\n", __func__, x );
+///     }
+///     void bar( int x ) {
+///         CallStack call( 0, "%s( %d )\n", __func__, x );
+///         foo( x+1000 );
+///         foo( x+2000 );
+///     }
+///     int main() {
+///         CallStack call( 0, "%s()\n", __func__ );
+///         bar( 123 );
+///     }
+/// Output:
+///     0:0 main()
+///     0:0     bar( 123 );
+///     0:0         foo( 1123 );
+///     0:0         foo( 2123 );
+///
+/// Defined in src/core/types.cc
+class CallStack
+{
+public:
+    CallStack( int mpi_rank, const char* format, ... );
+    ~CallStack();
+    static void comment( const char* msg );
+    static void print( MPI_Comm comm );
+
+    static std::string s_msg;
+
+    static int s_depth;
+    #pragma omp threadprivate( s_depth )
 };
 
 //------------------------------------------------------------------------------
