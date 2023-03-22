@@ -837,7 +837,7 @@ void MatrixStorage<scalar_t>::clearBatchArrays()
 template <typename scalar_t>
 void MatrixStorage<scalar_t>::reserveHostWorkspace(int64_t num_tiles)
 {
-    CallStack call( mpi_rank_, "%s.store.%s( num_tiles ) [[no-op?]]",
+    CallStack call( mpi_rank_, "%s.store.%s( num_tiles %lld ) [[no-op?]]",
                     cname(), __func__, llong( num_tiles ) );
 
     int64_t n = num_tiles - memory_.capacity( HostNum );
@@ -853,7 +853,7 @@ void MatrixStorage<scalar_t>::reserveHostWorkspace(int64_t num_tiles)
 template <typename scalar_t>
 void MatrixStorage<scalar_t>::reserveDeviceWorkspace(int64_t num_tiles)
 {
-    CallStack call( mpi_rank_, "%s.store.%s( num_tiles )",
+    CallStack call( mpi_rank_, "%s.store.%s( num_tiles %lld )",
                     cname(), __func__, llong( num_tiles ) );
 
     for (int device = 0; device < num_devices_; ++device) {

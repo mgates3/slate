@@ -152,6 +152,8 @@ CallStack::comment( "-------------------- C.insertLocalTiles\n" );
 
 CallStack::comment( "-------------------- generate A\n" );
     slate::generate_matrix(params.matrix, A);
+    slate::Debug::printTilesMOSI( A, "A", __func__, __FILE__, __LINE__ );
+
 CallStack::comment( "-------------------- generate B\n" );
     slate::generate_matrix(params.matrixB, B);
 CallStack::comment( "-------------------- generate C\n" );
