@@ -107,7 +107,7 @@ void slate_pgels(const char* transstr, int m, int n, int nrhs, scalar_t* a, int 
         {slate::Option::InnerBlocking, inner_blocking}
     });
 
-    if (verbose) std::cout << "slate_lapack_api: " << slate_lapack_scalar_t_to_char(a) << "gels(" << transstr[0] << "," <<  m << "," <<  n << "," << nrhs << "," <<  (void*)a << "," <<  lda << "," << (void*)b << "," << ldb << "," << (void*)work << "," << lwork << "," << *info << ") " << (omp_get_wtime()-timestart) << " sec " << "nb:" << nb << " max_threads:" << omp_get_max_threads() << "\n";
+    if (verbose) std::cout << "slate_lapack_api: " << to_char(a) << "gels(" << transstr[0] << "," <<  m << "," <<  n << "," << nrhs << "," <<  (void*)a << "," <<  lda << "," << (void*)b << "," << ldb << "," << (void*)work << "," << lwork << "," << *info << ") " << (omp_get_wtime()-timestart) << " sec " << "nb:" << nb << " max_threads:" << omp_get_max_threads() << "\n";
 
     // todo: extract the real info
     *info = 0;

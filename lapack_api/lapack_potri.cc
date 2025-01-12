@@ -82,7 +82,7 @@ void slate_potri(const char* uplostr, const int n, scalar_t* a, const int lda, i
     // todo get a real value for info
     *info = 0;
 
-    if (verbose) std::cout << "slate_lapack_api: " << slate_lapack_scalar_t_to_char(a) << "potri(" << uplostr[0] << "," << n << "," << (void*)a << "," <<  lda << "," << *info << ") " << (omp_get_wtime()-timestart) << " sec " << "nb:" << nb << " max_threads:" << omp_get_max_threads() << "\n";
+    if (verbose) std::cout << "slate_lapack_api: " << to_char(a) << "potri(" << uplostr[0] << "," << n << "," << (void*)a << "," <<  lda << "," << *info << ") " << (omp_get_wtime()-timestart) << " sec " << "nb:" << nb << " max_threads:" << omp_get_max_threads() << "\n";
 }
 
 } // namespace lapack_api

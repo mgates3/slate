@@ -112,7 +112,7 @@ void slate_getrf(const int m, const int n, scalar_t* a, const int lda, int* ipiv
     // todo: get a real value for info
     *info = 0;
 
-    if (verbose) std::cout << "slate_lapack_api: " << slate_lapack_scalar_t_to_char(a) << "getrf(" <<  m << "," <<  n << "," << (void*)a << "," <<  lda << "," << (void*)ipiv << "," << *info << ") " << (omp_get_wtime()-timestart) << " sec " << "nb:" << nb << " max_threads:" << omp_get_max_threads() << "\n";
+    if (verbose) std::cout << "slate_lapack_api: " << to_char(a) << "getrf(" <<  m << "," <<  n << "," << (void*)a << "," <<  lda << "," << (void*)ipiv << "," << *info << ") " << (omp_get_wtime()-timestart) << " sec " << "nb:" << nb << " max_threads:" << omp_get_max_threads() << "\n";
 
 }
 

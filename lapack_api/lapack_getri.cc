@@ -114,7 +114,7 @@ void slate_getri(const int n, scalar_t* a, const int lda, int* ipiv, scalar_t* w
 
     if (verbose)
         std::cout << "slate_lapack_api: "
-                  << slate_lapack_scalar_t_to_char(a) << "getri("
+                  << to_char(a) << "getri("
                   <<  n << "," <<  (void*)a << "," <<  lda << "," << (void*)ipiv << ","
                   << (void*)work << "," << lwork << "," << *info << ") "
                   << (omp_get_wtime()-timestart) << " sec "

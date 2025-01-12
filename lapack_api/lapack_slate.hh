@@ -21,11 +21,10 @@ namespace lapack_api {
 
 //    do { fprintf(stdout, "%s:%d %s(): " fmt, __FILE__, __LINE__, __func__, __VA_ARGS__); } while (0)
 
-inline char slate_lapack_scalar_t_to_char(int* a) { return 'i'; }
-inline char slate_lapack_scalar_t_to_char(float* a) { return 's'; }
-inline char slate_lapack_scalar_t_to_char(double* a) { return 'd'; }
-inline char slate_lapack_scalar_t_to_char(std::complex<float>* a) { return 'c'; }
-inline char slate_lapack_scalar_t_to_char(std::complex<double>* a) { return 'z'; }
+inline char to_char( float*  a ) { return 's'; }
+inline char to_char( double* a ) { return 'd'; }
+inline char to_char( std::complex<float>*  a ) { return 'c'; }
+inline char to_char( std::complex<double>* a ) { return 'z'; }
 
 inline slate::Target slate_lapack_set_target()
 {
