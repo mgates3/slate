@@ -112,14 +112,16 @@ void slate_getri(const int n, scalar_t* a, const int lda, int* ipiv, scalar_t* w
     // todo:  get a real value for info
     *info = 0;
 
-    if (verbose)
-        std::cout << "slate_lapack_api: "
-                  << to_char(a) << "getri("
-                  <<  n << "," <<  (void*)a << "," <<  lda << "," << (void*)ipiv << ","
-                  << (void*)work << "," << lwork << "," << *info << ") "
-                  << (omp_get_wtime()-timestart) << " sec "
-                  << "nb:" << nb
-                  << " max_threads:" << omp_get_max_threads() << "\n";
+    if (verbose) {
+        std::cout << "slate_lapack_api: " << to_char(a) << "getri( "
+                  << n << ", "
+                  << (void*)a << ", " << lda << ", " << (void*)ipiv << ", "
+                  << (void*)work << ", " << lwork << ", "
+                  << *info << " ) "
+                  << (omp_get_wtime() - timestart) << " sec"
+                  << " nb: " << nb
+                  << " max_threads: " << omp_get_max_threads() << "\n";
+    }
 }
 
 } // namespace lapack_api

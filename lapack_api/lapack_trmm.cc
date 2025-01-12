@@ -93,7 +93,17 @@ void slate_trmm(const char* sidestr, const char* uplostr, const char* transastr,
         {slate::Option::Target, target}
     });
 
-    if (verbose) std::cout << "slate_lapack_api: " << to_char(a) << "trmm(" << sidestr[0] << "," << uplostr[0] << "," << transastr[0] <<  "," << diagstr[0] <<  "," << m << "," << n << "," << alpha << "," << (void*)a << "," << lda << "," << (void*)b << "," << ldb << ") " << (omp_get_wtime()-timestart) << " sec " << "nb:" << nb << " max_threads:" << omp_get_max_threads() << "\n";
+    if (verbose) {
+        std::cout << "slate_lapack_api: " << to_char(a) << "trmm( "
+                  << sidestr[0] << ", " << uplostr[0] << ", "
+                  << transastr[0] << ", " << diagstr[0] << ", "
+                  << m << ", " << n << ", " << alpha << ", "
+                  << (void*)a << ", " << lda << ", "
+                  << (void*)b << ", " << ldb << " ) "
+                  << (omp_get_wtime() - timestart) << " sec"
+                  << " nb: " << nb
+                  << " max_threads: " << omp_get_max_threads() << "\n";
+    }
 }
 
 } // namespace lapack_api

@@ -155,7 +155,20 @@ void slate_gesvd(const char* jobustr, const char* jobvtstr, const int m, const i
         }
     }
 
-    if (verbose) std::cout << "slate_lapack_api: " << to_char(a) << "gesvd(" <<  jobustr[0] << "," << jobvtstr[0] << "," << m << "," << n << "," << (void*)a << "," <<  lda << "," << (void*)s << "," << (void*)u << "," << ldu << "," << (void*)vt << "," << ldvt << "," << (void*)work << "," << lwork << "," << *info << ") " << (omp_get_wtime()-timestart) << " sec " << "nb:" << nb << " max_threads:" << omp_get_max_threads() << "\n";
+    if (verbose) {
+        std::cout << "slate_lapack_api: " << to_char(a) << "gesvd( "
+                  << jobustr[0] << ", " << jobvtstr[0] << ", "
+                  << m << ", " << n << ", "
+                  << (void*)a << ", " << lda << ", "
+                  << (void*)s << ", "
+                  << (void*)u << ", " << ldu << ", "
+                  << (void*)vt << ", " << ldvt << ", "
+                  << (void*)work << ", " << lwork << ", "
+                  << *info << " ) "
+                  << (omp_get_wtime() - timestart) << " sec"
+                  << " nb: " << nb
+                  << " max_threads: " << omp_get_max_threads() << "\n";
+    }
 }
 
 } // namespace lapack_api

@@ -11,15 +11,16 @@
 
 #include "slate/slate.hh"
 
-#include <complex>
-
+//==============================================================================
 namespace slate {
 namespace lapack_api {
 
 #define logprintf(fmt, ...) \
-    do { fprintf(stdout, "slate_lapack_api: " fmt, __VA_ARGS__); } while (0)
-
-//    do { fprintf(stdout, "%s:%d %s(): " fmt, __FILE__, __LINE__, __func__, __VA_ARGS__); } while (0)
+    do { \
+        fprintf( stdout, "%s:%d %s(): " fmt, \
+                 __FILE__, __LINE__, __func__, __VA_ARGS__ ); \
+        fflush(0); \
+    } while (0)
 
 inline char to_char( float*  a ) { return 's'; }
 inline char to_char( double* a ) { return 'd'; }

@@ -98,8 +98,17 @@ void slate_gemm(const char* transastr, const char* transbstr, int m, int n, int 
         {slate::Option::Target, target}
     });
 
-    if (verbose) std::cout << "slate_lapack_api: " << to_char(a) << "gemm(" << transastr[0] << "," << transbstr[0] << "," <<  m << "," <<  n << "," <<  k << "," <<  alpha << "," << (void*)a << "," <<  lda << "," << (void*)b << "," << ldb << "," << beta << "," << (void*)c << "," << ldc << ") " << (omp_get_wtime()-timestart) << " sec " << "nb:" << nb << " max_threads:" << omp_get_max_threads() << "\n";
-
+    if (verbose) {
+        std::cout << "slate_lapack_api: " << to_char(a) << "gemm( "
+                  << transastr[0] << ", " << transbstr[0] << ", "
+                  << m << ", " << n << ", " << k << ", " << alpha << ", "
+                  << (void*)a << ", " << lda << ", "
+                  << (void*)b << ", " << ldb << ", " << beta << ", "
+                  << (void*)c << ", " << ldc << " ) "
+                  << (omp_get_wtime() - timestart) << " sec"
+                  << " nb: " << nb
+                  << " max_threads: " << omp_get_max_threads() << "\n";
+    }
 }
 
 } // namespace lapack_api

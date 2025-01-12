@@ -82,8 +82,17 @@ void slate_hemm(const char* sidestr, const char* uplostr, const int m, const int
         {slate::Option::Target, target}
     });
 
-    if (verbose) std::cout << "slate_lapack_api: " << to_char(a) << "hemm(" << sidestr[0] << "," << uplostr[0] << "," <<  m << "," <<  n << "," <<  alpha << "," << (void*)a << "," <<  lda << "," << (void*)b << "," << ldb << "," << beta << "," << (void*)c << "," << ldc << ") " << (omp_get_wtime()-timestart) << " sec " << "nb:" << nb << " max_threads:" << omp_get_max_threads() << "\n";
-
+    if (verbose) {
+        std::cout << "slate_lapack_api: " << to_char(a) << "hemm( "
+                  << sidestr[0] << ", " << uplostr[0] << ", "
+                  << m << ", " << n << ", " << alpha << ", "
+                  << (void*)a << ", " << lda << ", "
+                  << (void*)b << ", " << ldb << ", " << beta << ", "
+                  << (void*)c << ", " << ldc << " ) "
+                  << (omp_get_wtime() - timestart) << " sec"
+                  << " nb: " << nb
+                  << " max_threads: " << omp_get_max_threads() << "\n";
+    }
 }
 
 } // namespace lapack_api

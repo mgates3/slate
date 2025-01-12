@@ -52,9 +52,10 @@ blas::real_type<scalar_t> slate_lantr(const char* normstr, const char* uplostr, 
     if (std::min(m, n) == 0) return blas::real_type<scalar_t>(0);
 
     // start timing
-    // int verbose = VerboseConfig::value();
-    // double timestart = 0.0;
-    // if (verbose) timestart = omp_get_wtime();
+    int verbose = VerboseConfig::value();
+    double timestart = 0.0;
+    if (verbose)
+        timestart = omp_get_wtime();
 
     // need a dummy MPI_Init for SLATE to proceed
     int initialized, provided;
@@ -87,7 +88,17 @@ blas::real_type<scalar_t> slate_lantr(const char* normstr, const char* uplostr, 
         {slate::Option::Lookahead, lookahead}
     });
 
-    // if (verbose) std::cout << "slate_lapack_api: " << to_char(a) << "lantr(" << normstr[0] << "," << uplostr[0] <<  "," << diagstr[0] << "," << m << "," << n << "," <<  (void*)a << "," <<  lda << "," <<  (void*)work << ") " <<  (omp_get_wtime()-timestart) << " sec " << "nb:" << nb << " max_threads:" << omp_get_max_threads() << "\n";
+    if (verbose) {
+        std::cout << "slate_lapack_api: " << to_char(a) << "lantr( "
+                  << normstr[0] << ", " << uplostr[0] << ", "
+                  << diagstr[0] << ", "
+                  << m << ", " << n << ", "
+                  << (void*)a << ", " << lda << ", "
+                  << (void*)work << " ) "
+                  << (omp_get_wtime() - timestart) << " sec"
+                  << " nb: " << nb
+                  << " max_threads: " << omp_get_max_threads() << "\n";
+    }
 
     return A_norm;
 }

@@ -87,7 +87,17 @@ void slate_her2k(const char* uplostr, const char* transastr, const int n, const 
         {slate::Option::Target, target}
     });
 
-    if (verbose) std::cout << "slate_lapack_api: " << to_char(a) << "her2k(" << uplostr[0] << "," << transastr[0] << "," <<  n << "," <<  k << "," <<  alpha << "," << (void*)a << "," <<  lda << "," << (void*)b << "," << ldb << "," << beta << "," << (void*)c << "," << ldc << ") " << (omp_get_wtime()-timestart) << " sec " << "nb:" << nb << " max_threads:" << omp_get_max_threads() << "\n";
+    if (verbose) {
+        std::cout << "slate_lapack_api: " << to_char(a) << "her2k( "
+                  << uplostr[0] << ", " << transastr[0] << ", "
+                  << n << ", " << k << ", " << alpha << ", "
+                  << (void*)a << ", " << lda << ", "
+                  << (void*)b << ", " << ldb << ", " << beta << ", "
+                  << (void*)c << ", " << ldc << " ) "
+                  << (omp_get_wtime() - timestart) << " sec"
+                  << " nb: " << nb
+                  << " max_threads: " << omp_get_max_threads() << "\n";
+    }
 }
 
 } // namespace lapack_api

@@ -77,14 +77,24 @@ void slate_posv(const char* uplostr, const int n, const int nrhs, scalar_t* a, c
 
     // computes the solution to the system of linear equations with a square coefficient matrix A and multiple right-hand sides.
     slate::posv(A, B, {
-            {slate::Option::Lookahead, lookahead},
-            {slate::Option::Target, target}
-        });
+        {slate::Option::Lookahead, lookahead},
+        {slate::Option::Target, target}
+    });
 
     // todo:  get a real value for info
     *info = 0;
 
-    if (verbose) std::cout << "slate_lapack_api: " << to_char(a) << "posv(" <<  uplostr << "," << n << "," <<  nrhs << "," << (void*)a << "," <<  lda << "," << (void*)b << "," << ldb << "," << *info << ") " << (omp_get_wtime()-timestart) << " sec " << "nb:" << nb << " max_threads:" << omp_get_max_threads() << "\n";
+    if (verbose) {
+        std::cout << "slate_lapack_api: " << to_char(a) << "posv( "
+                  << uplostr[0] << ", "
+                  << n << ", " << nrhs << ", "
+                  << (void*)a << ", " << lda << ", "
+                  << (void*)b << ", " << ldb << ", "
+                  << *info << " ) "
+                  << (omp_get_wtime() - timestart) << " sec"
+                  << " nb: " << nb
+                  << " max_threads: " << omp_get_max_threads() << "\n";
+    }
 }
 
 } // namespace lapack_api

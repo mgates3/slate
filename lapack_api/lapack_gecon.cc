@@ -78,7 +78,18 @@ void slate_gecon(const char* normstr, const int n, scalar_t* a, const int lda, b
     // todo:  get a real value for info
     *info = 0;
 
-    if (verbose) std::cout << "slate_lapack_api: " << to_char(a) << "gecon(" <<  normstr[0] << "," << n << "," << (void*)a << "," <<  lda << "," << Anorm << "," << (void*)rcond << "," << (void*)work << "," << (void*)iwork << "," << *info << ") " << (omp_get_wtime()-timestart) << " sec " << "nb:" << nb << " max_threads:" << omp_get_max_threads() << "\n";
+    if (verbose) {
+        std::cout << "slate_lapack_api: " << to_char(a) << "gecon( "
+                  << normstr[0] << ", "
+                  << n << ", "
+                  << (void*)a << ", " << lda << ", "
+                  << Anorm << ", " << (void*)rcond << ", "
+                  << (void*)work << ", " << (void*)iwork << ", "
+                  << *info << " ) "
+                  << (omp_get_wtime() - timestart) << " sec"
+                  << " nb: " << nb
+                  << " max_threads: " << omp_get_max_threads() << "\n";
+    }
 }
 
 } // namespace lapack_api

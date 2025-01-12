@@ -102,7 +102,16 @@ void slate_gesv(const int n, const int nrhs, scalar_t* a, const int lda, int* ip
     // todo:  get a real value for info
     *info = 0;
 
-    if (verbose) std::cout << "slate_lapack_api: " << to_char(a) << "gesv(" <<  n << "," <<  nrhs << "," << (void*)a << "," <<  lda << "," << (void*)ipiv << "," << (void*)b << "," << ldb << "," << *info << ") " << (omp_get_wtime()-timestart) << " sec " << "nb:" << nb << " max_threads:" << omp_get_max_threads() << "\n";
+    if (verbose) {
+        std::cout << "slate_lapack_api: " << to_char(a) << "gesv( "
+                  << n << ", " << nrhs << ", "
+                  << (void*)a << ", " << lda << ", " << (void*)ipiv << ", "
+                  << (void*)b << ", " << ldb << ", "
+                  << *info << " ) "
+                  << (omp_get_wtime() - timestart) << " sec"
+                  << " nb: " << nb
+                  << " max_threads: " << omp_get_max_threads() << "\n";
+    }
 }
 
 } // namespace lapack_api

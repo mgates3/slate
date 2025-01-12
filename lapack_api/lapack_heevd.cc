@@ -119,12 +119,19 @@ void slate_heevd(const char* jobzstr, const char* uplostr, const int n, scalar_t
     }
 
     if (verbose) {
-        const char* routine_name = is_complex<scalar_t>::value ? "heevd" : "syevd";
-        std::cout << "slate_lapack_api: " << to_char(a) << routine_name << "(" <<  jobzstr[0] << "," << uplostr[0] << "," << n << "," << (void*)a << "," <<  lda << "," << (void*)w << (void*)work << "," << lwork << ",";
+        std::cout << "slate_lapack_api: " << to_char(a) << "heevd( "
+                  << jobzstr[0] << ", " << uplostr[0] << ", "
+                  << n << ", "
+                  << (void*)a << ", " << lda << ", " << (void*)w << ", "
+                  << (void*)work << ", " << lwork << ", ";
         if constexpr (! is_complex<scalar_t>::value) {
-            std::cout << (void*)rwork << "," << lrwork << ",";
+            std::cout << (void*)rwork << ", " << lrwork << ", ";
         }
-        std::cout << (void*)iwork << "," << liwork << "," << *info << ") " << (omp_get_wtime()-timestart) << " sec " << "nb:" << nb << " max_threads:" << omp_get_max_threads() << "\n";
+        std::cout << (void*)iwork << ", " << liwork << ", "
+                  << *info << " ) "
+                  << (omp_get_wtime() - timestart) << " sec"
+                  << " nb: " << nb
+                  << " max_threads: " << omp_get_max_threads() << "\n";
     }
 }
 
