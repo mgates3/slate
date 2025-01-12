@@ -49,7 +49,7 @@ template <typename scalar_t>
 void slate_trsm(const char* sidestr, const char* uplostr, const char* transastr, const char* diagstr, const int m, const int n, const scalar_t alpha, scalar_t* a, const int lda, scalar_t* b, const int ldb)
 {
     // start timing
-    static int verbose = slate_lapack_set_verbose();
+    int verbose = VerboseConfig::value();
     double timestart = 0.0;
     if (verbose) timestart = omp_get_wtime();
 
@@ -62,8 +62,8 @@ void slate_trsm(const char* sidestr, const char* uplostr, const char* transastr,
     int64_t lookahead = 1;
     int64_t p = 1;
     int64_t q = 1;
-    static slate::Target target = slate_lapack_set_target();
-    static int64_t nb = slate_lapack_set_nb(target);
+    slate::Target target = TargetConfig::value();
+    int64_t nb = NBConfig::value();
 
     Side side{};
     Uplo uplo{};

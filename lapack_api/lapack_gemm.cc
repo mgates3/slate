@@ -49,7 +49,7 @@ template <typename scalar_t>
 void slate_gemm(const char* transastr, const char* transbstr, int m, int n, int k, scalar_t alpha, scalar_t* a, int lda, scalar_t* b, int ldb, scalar_t beta, scalar_t* c, int ldc)
 {
     // Start timing
-    static int verbose = slate_lapack_set_verbose();
+    int verbose = VerboseConfig::value();
     double timestart = 0.0;
     if (verbose) timestart = omp_get_wtime();
 
@@ -62,7 +62,7 @@ void slate_gemm(const char* transastr, const char* transbstr, int m, int n, int 
     int64_t p = 1;
     int64_t q = 1;
     int64_t lookahead = 1;
-    static slate::Target target = slate_lapack_set_target();
+    slate::Target target = TargetConfig::value();
 
     Op transA{};
     Op transB{};
@@ -76,7 +76,7 @@ void slate_gemm(const char* transastr, const char* transbstr, int m, int n, int 
     int64_t Bn = (transB == blas::Op::NoTrans ? n : k);
     int64_t Cm = m;
     int64_t Cn = n;
-    static int64_t nb = slate_lapack_set_nb(target);
+    int64_t nb = NBConfig::value();
 
     // create SLATE matrices from the Lapack layouts
     auto A = slate::Matrix<scalar_t>::fromLAPACK(Am, An, a, lda, nb, p, q, MPI_COMM_WORLD);

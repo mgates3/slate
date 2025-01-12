@@ -45,7 +45,7 @@ template <typename scalar_t>
 void slate_trcon(const char* normstr, const char* uplostr, const char* diagstr, const int n, scalar_t* a, const int lda, blas::real_type<scalar_t>* rcond, scalar_t* work, int* iwork, int* info)
 {
     // Start timing
-    static int verbose = slate_lapack_set_verbose();
+    int verbose = VerboseConfig::value();
     double timestart = 0.0;
     if (verbose) timestart = omp_get_wtime();
 
@@ -58,7 +58,7 @@ void slate_trcon(const char* normstr, const char* uplostr, const char* diagstr, 
     int64_t lookahead = 1;
     int64_t p = 1;
     int64_t q = 1;
-    static slate::Target target = slate_lapack_set_target();
+    slate::Target target = TargetConfig::value();
 
     Uplo uplo{};
     Diag diag{};
@@ -68,7 +68,7 @@ void slate_trcon(const char* normstr, const char* uplostr, const char* diagstr, 
     from_string( std::string( 1, normstr[0] ), &norm );
 
     // sizes
-    static int64_t nb = slate_lapack_set_nb(target);
+    int64_t nb = NBConfig::value();
 
     // create SLATE matrix from the LAPACK data
     auto A = slate::TriangularMatrix<scalar_t>::fromLAPACK(uplo, diag, n, a, lda, nb, p, q, MPI_COMM_WORLD);

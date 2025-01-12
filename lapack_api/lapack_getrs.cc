@@ -48,7 +48,7 @@ template <typename scalar_t>
 void slate_getrs(const char* transstr, const int n, const int nrhs, scalar_t* a, const int lda, int* ipiv, scalar_t* b, const int ldb, int* info)
 {
     // Start timing
-    static int verbose = slate_lapack_set_verbose();
+    int verbose = VerboseConfig::value();
     double timestart = 0.0;
     if (verbose) timestart = omp_get_wtime();
 
@@ -61,7 +61,7 @@ void slate_getrs(const char* transstr, const int n, const int nrhs, scalar_t* a,
     int64_t lookahead = 1;
     int64_t p = 1;
     int64_t q = 1;
-    static slate::Target target = slate_lapack_set_target();
+    slate::Target target = TargetConfig::value();
 
     Op trans{};
     from_string( std::string( 1, transstr[0] ), &trans );
@@ -69,7 +69,7 @@ void slate_getrs(const char* transstr, const int n, const int nrhs, scalar_t* a,
     // sizes
     int64_t Am = n, An = n;
     int64_t Bm = n, Bn = nrhs;
-    static int64_t nb = slate_lapack_set_nb(target);
+    int64_t nb = NBConfig::value();
 
     // create SLATE matrices from the LAPACK data
     auto A = slate::Matrix<scalar_t>::fromLAPACK(Am, An, a, lda, nb, p, q, MPI_COMM_WORLD);

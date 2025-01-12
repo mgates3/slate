@@ -45,13 +45,13 @@ template <typename scalar_t>
 void slate_gesvd(const char* jobustr, const char* jobvtstr, const int m, const int n, scalar_t* a, const int lda, blas::real_type<scalar_t>* s, scalar_t* u, const int ldu, scalar_t* vt, const int ldvt, scalar_t* work, const int lwork, int* info)
 {
     // Start timing
-    static int verbose = slate_lapack_set_verbose();
+    int verbose = VerboseConfig::value();
     double timestart = 0.0;
     if (verbose) timestart = omp_get_wtime();
 
     // sizes
-    static slate::Target target = slate_lapack_set_target();
-    static int64_t nb = slate_lapack_set_nb(target);
+    slate::Target target = TargetConfig::value();
+    int64_t nb = NBConfig::value();
     int64_t min_mn = std::min( m, n );
 
     // TODO check args more carefully

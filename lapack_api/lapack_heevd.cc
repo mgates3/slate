@@ -47,13 +47,13 @@ template <typename scalar_t>
 void slate_heevd(const char* jobzstr, const char* uplostr, const int n, scalar_t* a, const int lda, blas::real_type<scalar_t>* w, scalar_t* work, const int lwork, blas::real_type<scalar_t>* rwork, int lrwork, int* iwork, int liwork, int* info)
 {
     // Start timing
-    static int verbose = slate_lapack_set_verbose();
+    int verbose = VerboseConfig::value();
     double timestart = 0.0;
     if (verbose) timestart = omp_get_wtime();
 
     // sizes
-    static slate::Target target = slate_lapack_set_target();
-    static int64_t nb = slate_lapack_set_nb(target);
+    slate::Target target = TargetConfig::value();
+    int64_t nb = NBConfig::value();
 
     // TODO check args more carefully
     *info = 0;

@@ -52,7 +52,7 @@ blas::real_type<scalar_t> slate_lantr(const char* normstr, const char* uplostr, 
     if (std::min(m, n) == 0) return blas::real_type<scalar_t>(0);
 
     // start timing
-    // static int verbose = slate_lapack_set_verbose();
+    // int verbose = VerboseConfig::value();
     // double timestart = 0.0;
     // if (verbose) timestart = omp_get_wtime();
 
@@ -75,8 +75,8 @@ blas::real_type<scalar_t> slate_lantr(const char* normstr, const char* uplostr, 
     int64_t lookahead = 1;
     int64_t p = 1;
     int64_t q = 1;
-    static slate::Target target = slate_lapack_set_target();
-    static int64_t nb = std::min({slate_lapack_set_nb(target), Am, An});
+    slate::Target target = TargetConfig::value();
+    int64_t nb = NBConfig::value();
 
     // create SLATE matrix from the Lapack layouts
     auto A = slate::TrapezoidMatrix<scalar_t>::fromLAPACK(uplo, diag, Am, An, a, lda, nb, p, q, MPI_COMM_WORLD);

@@ -49,7 +49,7 @@ template <typename scalar_t>
 void slate_getrf(const int m, const int n, scalar_t* a, const int lda, int* ipiv, int* info)
 {
     // Start timing
-    static int verbose = slate_lapack_set_verbose();
+    int verbose = VerboseConfig::value();
     double timestart = 0.0;
     if (verbose) timestart = omp_get_wtime();
 
@@ -76,13 +76,13 @@ void slate_getrf(const int m, const int n, scalar_t* a, const int lda, int* ipiv
     int64_t p = 1;
     int64_t q = 1;
     int64_t lookahead = 1;
-    static slate::Target target = slate_lapack_set_target();
-    static int64_t panel_threads = slate_lapack_set_panelthreads();
+    slate::Target target = TargetConfig::value();
+    int64_t panel_threads = PanelThreadsConfig::value();
 
     int64_t Am = m;
     int64_t An = n;
-    static int64_t nb = slate_lapack_set_nb(target);
-    static int64_t ib = std::min({slate_lapack_set_ib(), nb});
+    int64_t nb = NBConfig::value();
+    int64_t ib = IBConfig::value();
     slate::Pivots pivots;
 
     // create SLATE matrices from the Lapack layouts
