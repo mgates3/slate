@@ -197,7 +197,7 @@ struct is_complex< std::complex<T> >:
 #endif
 
 //------------------------------------------------------------------------------
-/// Extracts an option.
+/// Extracts an option from a map of options.
 ///
 /// @param[in] opt
 ///     Map of options and values.
