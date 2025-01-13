@@ -8,55 +8,28 @@
 namespace slate {
 namespace lapack_api {
 
-// -----------------------------------------------------------------------------
-// Local function
+//------------------------------------------------------------------------------
+/// SLATE ScaLAPACK wrapper sets up SLATE matrices from ScaLAPACK descriptors
+/// and calls SLATE.
 template <typename scalar_t>
-void slate_getrs(const char* transstr, const int n, const int nrhs, scalar_t* a, const int lda, int* ipiv, scalar_t* b, const int ldb, int* info);
-
-// -----------------------------------------------------------------------------
-// C interfaces (FORTRAN_UPPER, FORTRAN_LOWER, FORTRAN_UNDERSCORE)
-
-#define slate_sgetrs BLAS_FORTRAN_NAME( slate_sgetrs, SLATE_SGETRS )
-#define slate_dgetrs BLAS_FORTRAN_NAME( slate_dgetrs, SLATE_DGETRS )
-#define slate_cgetrs BLAS_FORTRAN_NAME( slate_cgetrs, SLATE_CGETRS )
-#define slate_zgetrs BLAS_FORTRAN_NAME( slate_zgetrs, SLATE_ZGETRS )
-
-extern "C" void slate_sgetrs(const char* trans, const int* n, const int* nrhs, float* a, const int* lda, int* ipiv, float* b, const int* ldb, int* info)
-{
-    slate_getrs(trans, *n, *nrhs, a, *lda, ipiv, b, *ldb, info);
-}
-
-extern "C" void slate_dgetrs(const char* trans, const int* n, const int* nrhs, double* a, const int* lda, int* ipiv, double* b, const int* ldb, int* info)
-{
-    slate_getrs(trans, *n, *nrhs, a, *lda, ipiv, b, *ldb, info);
-}
-
-extern "C" void slate_cgetrs(const char* trans, const int* n, const int* nrhs, std::complex<float>* a, const int* lda, int* ipiv, std::complex<float>* b, const int* ldb, int* info)
-{
-    slate_getrs(trans, *n, *nrhs, a, *lda, ipiv, b, *ldb, info);
-}
-
-extern "C" void slate_zgetrs(const char* trans, const int* n, const int* nrhs, std::complex<double>* a, const int* lda, int* ipiv, std::complex<double>* b, const int* ldb, int* info)
-{
-    slate_getrs(trans, *n, *nrhs, a, *lda, ipiv, b, *ldb, info);
-}
-
-// -----------------------------------------------------------------------------
-
-// Type generic function calls the SLATE routine
-template <typename scalar_t>
-void slate_getrs(const char* transstr, const int n, const int nrhs, scalar_t* a, const int lda, int* ipiv, scalar_t* b, const int ldb, int* info)
+void slate_getrs(
+    const char* trans_str, blas_int n, blas_int nrhs,
+    scalar_t* A_data, blas_int lda,
+    blas_int* ipiv,
+    scalar_t* B_data, blas_int ldb,
+    blas_int* info )
 {
     // Start timing
     int verbose = VerboseConfig::value();
     double timestart = 0.0;
-    if (verbose) timestart = omp_get_wtime();
+    if (verbose)
+        timestart = omp_get_wtime();
 
     // Check and initialize MPI, else SLATE calls to MPI will fail
-    int initialized, provided;
-    MPI_Initialized(&initialized);
+    blas_int initialized, provided;
+    MPI_Initialized( &initialized );
     if (! initialized)
-        MPI_Init_thread(nullptr, nullptr, MPI_THREAD_MULTIPLE, &provided);
+        MPI_Init_thread( nullptr, nullptr, MPI_THREAD_MULTIPLE, &provided );
 
     int64_t lookahead = 1;
     int64_t p = 1;
@@ -64,7 +37,7 @@ void slate_getrs(const char* transstr, const int n, const int nrhs, scalar_t* a,
     slate::Target target = TargetConfig::value();
 
     Op trans{};
-    from_string( std::string( 1, transstr[0] ), &trans );
+    from_string( std::string( 1, trans_str[0] ), &trans );
 
     // sizes
     int64_t Am = n, An = n;
@@ -72,8 +45,14 @@ void slate_getrs(const char* transstr, const int n, const int nrhs, scalar_t* a,
     int64_t nb = NBConfig::value();
 
     // create SLATE matrices from the LAPACK data
-    auto A = slate::Matrix<scalar_t>::fromLAPACK(Am, An, a, lda, nb, p, q, MPI_COMM_WORLD);
-    auto B = slate::Matrix<scalar_t>::fromLAPACK(Bm, Bn, b, ldb, nb, p, q, MPI_COMM_WORLD);
+    auto A = slate::Matrix<scalar_t>::fromLAPACK(
+        Am, An,
+        A_data, lda,
+        nb, p, q, MPI_COMM_SELF );
+    auto B = slate::Matrix<scalar_t>::fromLAPACK(
+        Bm, Bn,
+        B_data, ldb,
+        nb, p, q, MPI_COMM_SELF );
 
     // extract pivots from LAPACK ipiv to SLATES pivot structure
     slate::Pivots pivots; // std::vector< std::vector<Pivot> >
@@ -102,31 +81,82 @@ void slate_getrs(const char* transstr, const int n, const int nrhs, scalar_t* a,
     // apply operator to A
     auto opA = A;
     if (trans == slate::Op::Trans)
-        opA = transpose(A);
+        opA = transpose( A );
     else if (trans == slate::Op::ConjTrans)
         opA = conj_transpose( A );
 
     // solve
-    slate::getrs(opA, pivots, B, {
+    slate::getrs( opA, pivots, B, {
         {slate::Option::Lookahead, lookahead},
         {slate::Option::Target, target}
     });
 
-    // todo:  get a real value for info
+    // todo:  get A_data real value for info
     *info = 0;
 
     if (verbose) {
-        std::cout << "slate_lapack_api: " << to_char(a) << "getrs( "
-                  << transstr[0] << ", "
+        std::cout << "slate_lapack_api: " << to_char(A_data) << "getrs( "
+                  << trans_str[0] << ", "
                   << n << ", " << nrhs << ", "
-                  << (void*)a << ", " << lda << ", " << (void*)ipiv << ", "
-                  << (void*)b << ", " << ldb << ", "
+                  << (void*)A_data << ", " << lda << ", " << (void*)ipiv << ", "
+                  << (void*)B_data << ", " << ldb << ", "
                   << *info << " ) "
                   << (omp_get_wtime() - timestart) << " sec"
                   << " nb: " << nb
                   << " max_threads: " << omp_get_max_threads() << "\n";
     }
 }
+
+//------------------------------------------------------------------------------
+// Fortran interfaces
+
+extern "C" {
+
+#define slate_sgetrs BLAS_FORTRAN_NAME( slate_sgetrs, SLATE_SGETRS )
+void slate_sgetrs(
+    const char* trans, blas_int const* n, blas_int const* nrhs,
+    float* A_data, blas_int const* lda,
+    blas_int* ipiv,
+    float* B_data, blas_int const* ldb,
+    blas_int* info )
+{
+    slate_getrs( trans, *n, *nrhs, A_data, *lda, ipiv, B_data, *ldb, info );
+}
+
+#define slate_dgetrs BLAS_FORTRAN_NAME( slate_dgetrs, SLATE_DGETRS )
+void slate_dgetrs(
+    const char* trans, blas_int const* n, blas_int const* nrhs,
+    double* A_data, blas_int const* lda,
+    blas_int* ipiv,
+    double* B_data, blas_int const* ldb,
+    blas_int* info )
+{
+    slate_getrs( trans, *n, *nrhs, A_data, *lda, ipiv, B_data, *ldb, info );
+}
+
+#define slate_cgetrs BLAS_FORTRAN_NAME( slate_cgetrs, SLATE_CGETRS )
+void slate_cgetrs(
+    const char* trans, blas_int const* n, blas_int const* nrhs,
+    std::complex<float>* A_data, blas_int const* lda,
+    blas_int* ipiv,
+    std::complex<float>* B_data, blas_int const* ldb,
+    blas_int* info )
+{
+    slate_getrs( trans, *n, *nrhs, A_data, *lda, ipiv, B_data, *ldb, info );
+}
+
+#define slate_zgetrs BLAS_FORTRAN_NAME( slate_zgetrs, SLATE_ZGETRS )
+void slate_zgetrs(
+    const char* trans, blas_int const* n, blas_int const* nrhs,
+    std::complex<double>* A_data, blas_int const* lda,
+    blas_int* ipiv,
+    std::complex<double>* B_data, blas_int const* ldb,
+    blas_int* info )
+{
+    slate_getrs(  trans, *n, *nrhs, A_data, *lda, ipiv, B_data, *ldb, info );
+}
+
+} // extern "C"
 
 } // namespace lapack_api
 } // namespace slate

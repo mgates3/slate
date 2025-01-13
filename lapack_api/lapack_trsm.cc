@@ -8,56 +8,28 @@
 namespace slate {
 namespace lapack_api {
 
-// -----------------------------------------------------------------------------
-
-// Local function
+//------------------------------------------------------------------------------
+/// SLATE ScaLAPACK wrapper sets up SLATE matrices from ScaLAPACK descriptors
+/// and calls SLATE.
 template <typename scalar_t>
-void slate_trsm(const char* sidestr, const char* uplostr, const char* transastr, const char* diagstr, const int m, const int n, const scalar_t alpha, scalar_t* a, const int lda, scalar_t* b, const int ldb);
-
-// -----------------------------------------------------------------------------
-// C interfaces (FORTRAN_UPPER, FORTRAN_LOWER, FORTRAN_UNDERSCORE)
-
-#define slate_strsm BLAS_FORTRAN_NAME( slate_strsm, SLATE_STRSM )
-#define slate_dtrsm BLAS_FORTRAN_NAME( slate_dtrsm, SLATE_DTRSM )
-#define slate_ctrsm BLAS_FORTRAN_NAME( slate_ctrsm, SLATE_CTRSM )
-#define slate_ztrsm BLAS_FORTRAN_NAME( slate_ztrsm, SLATE_ZTRSM )
-
-extern "C" void slate_strsm(const char* side, const char* uplo, const char* transa, const char* diag, const int* m, const int* n, const float* alpha, float* a, const int* lda, float* b, const int* ldb)
-{
-    slate_trsm(side, uplo, transa, diag, *m, *n, *alpha, a, *lda, b, *ldb);
-}
-
-extern "C" void slate_dtrsm(const char* side, const char* uplo, const char* transa, const char* diag, const int* m, const int* n, const double* alpha, double* a, const int* lda, double* b, const int* ldb)
-{
-    slate_trsm(side, uplo, transa, diag, *m, *n, *alpha, a, *lda, b, *ldb);
-}
-
-extern "C" void slate_ctrsm(const char* side, const char* uplo, const char* transa, const char* diag, const int* m, const int* n, const std::complex<float>* alpha, std::complex<float>* a, const int* lda, std::complex<float>* b, const int* ldb)
-{
-    slate_trsm(side, uplo, transa, diag, *m, *n, *alpha, a, *lda, b, *ldb);
-}
-
-extern "C" void slate_ztrsm(const char* side, const char* uplo, const char* transa, const char* diag, const int* m, const int* n, const std::complex<double>* alpha, std::complex<double>* a, const int* lda, std::complex<double>* b, const int* ldb)
-{
-    slate_trsm(side, uplo, transa, diag, *m, *n, *alpha, a, *lda, b, *ldb);
-}
-
-// -----------------------------------------------------------------------------
-
-// Type generic function calls the SLATE routine
-template <typename scalar_t>
-void slate_trsm(const char* sidestr, const char* uplostr, const char* transastr, const char* diagstr, const int m, const int n, const scalar_t alpha, scalar_t* a, const int lda, scalar_t* b, const int ldb)
+void slate_trsm(
+    const char* side_str, const char* uplo_str,
+    const char* transa_str, const char* diag_str,
+    blas_int m, blas_int n, scalar_t alpha,
+    scalar_t* A_data, blas_int lda,
+    scalar_t* B_data, blas_int ldb )
 {
     // start timing
     int verbose = VerboseConfig::value();
     double timestart = 0.0;
-    if (verbose) timestart = omp_get_wtime();
+    if (verbose)
+        timestart = omp_get_wtime();
 
-    // need a dummy MPI_Init for SLATE to proceed
-    int initialized, provided;
-    MPI_Initialized(&initialized);
+    // need A_data dummy MPI_Init for SLATE to proceed
+    blas_int initialized, provided;
+    MPI_Initialized( &initialized );
     if (! initialized)
-        MPI_Init_thread(nullptr, nullptr, MPI_THREAD_SERIALIZED, &provided);
+        MPI_Init_thread( nullptr, nullptr, MPI_THREAD_SERIALIZED, &provided );
 
     int64_t lookahead = 1;
     int64_t p = 1;
@@ -69,10 +41,10 @@ void slate_trsm(const char* sidestr, const char* uplostr, const char* transastr,
     Uplo uplo{};
     Op transA{};
     Diag diag{};
-    from_string( std::string( 1, sidestr[0] ), &side );
-    from_string( std::string( 1, uplostr[0] ), &uplo );
-    from_string( std::string( 1, transastr[0] ), &transA );
-    from_string( std::string( 1, diagstr[0] ), &diag );
+    from_string( std::string( 1, side_str[0] ), &side );
+    from_string( std::string( 1, uplo_str[0] ), &uplo );
+    from_string( std::string( 1, transa_str[0] ), &transA );
+    from_string( std::string( 1, diag_str[0] ), &diag );
 
     // setup so op(B) is m-by-n
     int64_t An  = (side == blas::Side::Left ? m : n);
@@ -80,31 +52,100 @@ void slate_trsm(const char* sidestr, const char* uplostr, const char* transastr,
     int64_t Bn  = n;
 
     // create SLATE matrices from the LAPACK data
-    auto A = slate::TriangularMatrix<scalar_t>::fromLAPACK(uplo, diag, An, a, lda, nb, p, q, MPI_COMM_WORLD);
-    auto B = slate::Matrix<scalar_t>::fromLAPACK(Bm, Bn, b, ldb, nb, p, q, MPI_COMM_WORLD);
+    auto A = slate::TriangularMatrix<scalar_t>::fromLAPACK(
+        uplo, diag, An,
+        A_data, lda,
+        nb, p, q, MPI_COMM_SELF );
+    auto B = slate::Matrix<scalar_t>::fromLAPACK(
+        Bm, Bn,
+        B_data, ldb,
+        nb, p, q, MPI_COMM_SELF );
 
     if (transA == Op::Trans)
-        A = transpose(A);
+        A = transpose( A );
     else if (transA == Op::ConjTrans)
         A = conj_transpose( A );
 
-    slate::trsm(side, alpha, A, B, {
+    slate::trsm( side, alpha, A, B, {
         {slate::Option::Lookahead, lookahead},
         {slate::Option::Target, target}
     });
 
     if (verbose) {
-        std::cout << "slate_lapack_api: " << to_char(a) << "trsm( "
-                  << sidestr[0] << ", " << uplostr[0] << ", "
-                  << transastr[0] << ", " << diagstr[0] << ", "
+        std::cout << "slate_lapack_api: " << to_char(A_data) << "trsm( "
+                  << side_str[0] << ", " << uplo_str[0] << ", "
+                  << transa_str[0] << ", " << diag_str[0] << ", "
                   << m << ", " << n << ", " << alpha << ", "
-                  << (void*)a << ", " << lda << ", "
-                  << (void*)b << ", " << ldb << " ) "
+                  << (void*)A_data << ", " << lda << ", "
+                  << (void*)B_data << ", " << ldb << " ) "
                   << (omp_get_wtime() - timestart) << " sec"
                   << " nb: " << nb
                   << " max_threads: " << omp_get_max_threads() << "\n";
     }
 }
+
+//------------------------------------------------------------------------------
+// Fortran interfaces
+
+extern "C" {
+
+#define slate_strsm BLAS_FORTRAN_NAME( slate_strsm, SLATE_STRSM )
+void slate_strsm(
+    const char* side, const char* uplo, const char* transA, const char* diag,
+    blas_int const* m, blas_int const* n,
+    float const* alpha,
+    float* A_data, blas_int const* lda,
+    float* B_data, blas_int const* ldb )
+{
+    slate_trsm(
+        side, uplo, transA, diag, *m, *n, *alpha,
+        A_data, *lda,
+        B_data, *ldb );
+}
+
+#define slate_dtrsm BLAS_FORTRAN_NAME( slate_dtrsm, SLATE_DTRSM )
+void slate_dtrsm(
+    const char* side, const char* uplo, const char* transA, const char* diag,
+    blas_int const* m, blas_int const* n,
+    double const* alpha,
+    double* A_data, blas_int const* lda,
+    double* B_data, blas_int const* ldb )
+{
+    slate_trsm(
+        side, uplo, transA, diag, *m, *n, *alpha,
+        A_data, *lda,
+        B_data, *ldb );
+}
+
+#define slate_ctrsm BLAS_FORTRAN_NAME( slate_ctrsm, SLATE_CTRSM )
+void slate_ctrsm(
+    const char* side, const char* uplo, const char* transA, const char* diag,
+    blas_int const* m, blas_int const* n,
+    std::complex<float> const* alpha,
+    std::complex<float>* A_data, blas_int const* lda,
+    std::complex<float>* B_data, blas_int const* ldb )
+{
+    slate_trsm(
+        side, uplo, transA, diag, *m, *n, *alpha,
+        A_data, *lda,
+        B_data, *ldb );
+}
+
+#define slate_ztrsm BLAS_FORTRAN_NAME( slate_ztrsm, SLATE_ZTRSM )
+void slate_ztrsm(
+    const char* side, const char* uplo, const char* transA, const char* diag,
+    blas_int const* m, blas_int const* n,
+    std::complex<double> const* alpha,
+    std::complex<double>* A_data, blas_int const* lda,
+    std::complex<double>* B_data, blas_int const* ldb )
+{
+    slate_trsm(
+        side, uplo, transA, diag, *m, *n, *alpha,
+        A_data, *lda,
+        B_data, *ldb );
+}
+
+} // extern "C"
 
 } // namespace lapack_api
 } // namespace slate

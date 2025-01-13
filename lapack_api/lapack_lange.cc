@@ -8,45 +8,15 @@
 namespace slate {
 namespace lapack_api {
 
-// -----------------------------------------------------------------------------
-
-// Local function
+//------------------------------------------------------------------------------
+/// SLATE ScaLAPACK wrapper sets up SLATE matrices from ScaLAPACK descriptors
+/// and calls SLATE.
 template <typename scalar_t>
-blas::real_type<scalar_t> slate_lange(const char* normstr, int m, int n, scalar_t* a, int lda, blas::real_type<scalar_t>* work);
-
-// -----------------------------------------------------------------------------
-// C interfaces (FORTRAN_UPPER, FORTRAN_LOWER, FORTRAN_UNDERSCORE)
-
-#define slate_slange BLAS_FORTRAN_NAME( slate_slange, SLATE_SLANGE )
-#define slate_dlange BLAS_FORTRAN_NAME( slate_dlange, SLATE_DLANGE )
-#define slate_clange BLAS_FORTRAN_NAME( slate_clange, SLATE_CLANGE )
-#define slate_zlange BLAS_FORTRAN_NAME( slate_zlange, SLATE_ZLANGE )
-
-extern "C" float slate_slange(const char* norm, int* m, int* n, float* a, int* lda, float* work)
-{
-    return slate_lange(norm, *m, *n, a, *lda, work);
-}
-
-extern "C" double slate_dlange(const char* norm, int* m, int* n, double* a, int* lda, double* work)
-{
-    return slate_lange(norm, *m, *n, a, *lda, work);
-}
-
-extern "C" float slate_clange(const char* norm, int* m, int* n, std::complex<float>* a, int* lda, float* work)
-{
-    return slate_lange(norm, *m, *n, a, *lda, work);
-}
-
-extern "C" double slate_zlange(const char* norm, int* m, int* n, std::complex<double>* a, int* lda, double* work)
-{
-    return slate_lange(norm, *m, *n, a, *lda, work);
-}
-
-// -----------------------------------------------------------------------------
-
-// Type generic function calls the SLATE routine
-template <typename scalar_t>
-blas::real_type<scalar_t> slate_lange(const char* normstr, int m, int n, scalar_t* a, int lda, blas::real_type<scalar_t>* work)
+blas::real_type<scalar_t> slate_lange(
+    const char* norm_str,
+    blas_int m, blas_int n,
+    scalar_t* A_data, blas_int lda,
+    blas::real_type<scalar_t>* work)
 {
     // start timing
     int verbose = VerboseConfig::value();
@@ -54,14 +24,14 @@ blas::real_type<scalar_t> slate_lange(const char* normstr, int m, int n, scalar_
     if (verbose)
         timestart = omp_get_wtime();
 
-    // need a dummy MPI_Init for SLATE to proceed
-    int initialized, provided;
-    MPI_Initialized(&initialized);
+    // need A_data dummy MPI_Init for SLATE to proceed
+    blas_int initialized, provided;
+    MPI_Initialized( &initialized );
     if (! initialized)
-        MPI_Init_thread(nullptr, nullptr, MPI_THREAD_SERIALIZED, &provided);
+        MPI_Init_thread( nullptr, nullptr, MPI_THREAD_SERIALIZED, &provided );
 
     Norm norm{};
-    from_string( std::string( 1, normstr[0] ), &norm );
+    from_string( std::string( 1, norm_str[0] ), &norm );
 
     int64_t lookahead = 1;
     int64_t p = 1;
@@ -74,19 +44,22 @@ blas::real_type<scalar_t> slate_lange(const char* normstr, int m, int n, scalar_
     int64_t An = n;
 
     // create SLATE matrix from the Lapack layouts
-    auto A = slate::Matrix<scalar_t>::fromLAPACK(Am, An, a, lda, nb, p, q, MPI_COMM_WORLD);
+    auto A = slate::Matrix<scalar_t>::fromLAPACK(
+        Am, An,
+        A_data, lda,
+        nb, p, q, MPI_COMM_SELF );
 
     blas::real_type<scalar_t> A_norm;
-    A_norm = slate::norm(norm, A, {
+    A_norm = slate::norm( norm, A, {
         {slate::Option::Target, target},
         {slate::Option::Lookahead, lookahead}
     });
 
     if (verbose) {
-        std::cout << "slate_lapack_api: " << to_char(a) << "lange( "
-                  << normstr[0] << ", "
+        std::cout << "slate_lapack_api: " << to_char(A_data) << "lange( "
+                  << norm_str[0] << ", "
                   << m << ", " << n << ", "
-                  << (void*)a << ", " << lda << ", "
+                  << (void*)A_data << ", " << lda << ", "
                   << (void*)work << " ) "
                   << (omp_get_wtime() - timestart) << " sec"
                   << " nb: " << nb
@@ -95,6 +68,53 @@ blas::real_type<scalar_t> slate_lange(const char* normstr, int m, int n, scalar_
 
     return A_norm;
 }
+
+//------------------------------------------------------------------------------
+// Fortran interfaces
+
+extern "C" {
+
+#define slate_slange BLAS_FORTRAN_NAME( slate_slange, SLATE_SLANGE )
+float slate_slange(
+    const char* norm,
+    blas_int const* m, blas_int const* n,
+    float* A_data, blas_int* lda,
+    float* work )
+{
+    return slate_lange( norm, *m, *n, A_data, *lda, work );
+}
+
+#define slate_dlange BLAS_FORTRAN_NAME( slate_dlange, SLATE_DLANGE )
+double slate_dlange(
+    const char* norm,
+    blas_int const* m, blas_int const* n,
+    double* A_data, blas_int* lda,
+    double* work )
+{
+    return slate_lange( norm, *m, *n, A_data, *lda, work );
+}
+
+#define slate_clange BLAS_FORTRAN_NAME( slate_clange, SLATE_CLANGE )
+float slate_clange(
+    const char* norm,
+    blas_int const* m, blas_int const* n,
+    std::complex<float>* A_data, blas_int* lda,
+    float* work )
+{
+    return slate_lange( norm, *m, *n, A_data, *lda, work );
+}
+
+#define slate_zlange BLAS_FORTRAN_NAME( slate_zlange, SLATE_ZLANGE )
+double slate_zlange(
+    const char* norm,
+    blas_int const* m, blas_int const* n,
+    std::complex<double>* A_data, blas_int* lda,
+    double* work )
+{
+    return slate_lange( norm, *m, *n, A_data, *lda, work );
+}
+
+} // extern "C"
 
 } // namespace lapack_api
 } // namespace slate

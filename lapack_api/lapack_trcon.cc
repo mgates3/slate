@@ -8,52 +8,30 @@
 namespace slate {
 namespace lapack_api {
 
-// -----------------------------------------------------------------------------
-// Local function
+//------------------------------------------------------------------------------
+/// SLATE ScaLAPACK wrapper sets up SLATE matrices from ScaLAPACK descriptors
+/// and calls SLATE.
 template <typename scalar_t>
-void slate_trcon(const char* normstr, const char* uplostr, const char* diagstr, const int n, scalar_t* a, const int lda, blas::real_type<scalar_t>* rcond, scalar_t* work, int* iwork, int* info);
-
-// -----------------------------------------------------------------------------
-// C interfaces (FORTRAN_UPPER, FORTRAN_LOWER, FORTRAN_UNDERSCORE)
-
-#define slate_strcon BLAS_FORTRAN_NAME( slate_strcon, SLATE_STRCON )
-#define slate_dtrcon BLAS_FORTRAN_NAME( slate_dtrcon, SLATE_DTRCON )
-#define slate_ctrcon BLAS_FORTRAN_NAME( slate_ctrcon, SLATE_CTRCON )
-#define slate_ztrcon BLAS_FORTRAN_NAME( slate_ztrcon, SLATE_ZTRCON )
-
-extern "C" void slate_strcon(const char* normstr, const char* uplostr, const char* diagstr, const int* n, float* a, const int* lda, float* rcond, float* work, int* iwork, int* info)
-{
-    slate_trcon(normstr, uplostr, diagstr, *n, a, *lda, rcond, work, iwork, info);
-}
-extern "C" void slate_dtrcon(const char* normstr, const char* uplostr, const char* diagstr, const int* n, double* a, const int* lda, double* rcond, double* work, int* iwork, int* info)
-{
-    slate_trcon(normstr, uplostr, diagstr, *n, a, *lda, rcond, work, iwork, info);
-}
-extern "C" void slate_ctrcon(const char* normstr, const char* uplostr, const char* diagstr, const int* n, std::complex<float>* a, const int* lda, float* rcond, std::complex<float>* work, int* iwork, int* info)
-{
-    slate_trcon(normstr, uplostr, diagstr, *n, a, *lda, rcond, work, iwork, info);
-}
-extern "C" void slate_ztrcon(const char* normstr, const char* uplostr, const char* diagstr, const int* n, std::complex<double>* a, const int* lda, double* rcond, std::complex<double>* work, int* iwork, int* info)
-{
-    slate_trcon(normstr, uplostr, diagstr, *n, a, *lda, rcond, work, iwork, info);
-}
-
-// -----------------------------------------------------------------------------
-
-// Type generic function calls the SLATE routine
-template <typename scalar_t>
-void slate_trcon(const char* normstr, const char* uplostr, const char* diagstr, const int n, scalar_t* a, const int lda, blas::real_type<scalar_t>* rcond, scalar_t* work, int* iwork, int* info)
+void slate_trcon(
+    const char* norm_str, const char* uplo_str, const char* diag_str,
+    blas_int const n,
+    scalar_t* A_data, blas_int const lda,
+    blas::real_type<scalar_t>* rcond,
+    scalar_t* work,
+    blas_int* iwork,
+    blas_int* info )
 {
     // Start timing
     int verbose = VerboseConfig::value();
     double timestart = 0.0;
-    if (verbose) timestart = omp_get_wtime();
+    if (verbose)
+        timestart = omp_get_wtime();
 
     // Check and initialize MPI, else SLATE calls to MPI will fail
-    int initialized, provided;
-    MPI_Initialized(&initialized);
+    blas_int initialized, provided;
+    MPI_Initialized( &initialized );
     if (! initialized)
-        MPI_Init_thread(nullptr, nullptr, MPI_THREAD_MULTIPLE, &provided);
+        MPI_Init_thread( nullptr, nullptr, MPI_THREAD_MULTIPLE, &provided );
 
     int64_t lookahead = 1;
     int64_t p = 1;
@@ -63,15 +41,18 @@ void slate_trcon(const char* normstr, const char* uplostr, const char* diagstr, 
     Uplo uplo{};
     Diag diag{};
     Norm norm{};
-    from_string( std::string( 1, uplostr[0] ), &uplo );
-    from_string( std::string( 1, diagstr[0] ), &diag );
-    from_string( std::string( 1, normstr[0] ), &norm );
+    from_string( std::string( 1, uplo_str[0] ), &uplo );
+    from_string( std::string( 1, diag_str[0] ), &diag );
+    from_string( std::string( 1, norm_str[0] ), &norm );
 
     // sizes
     int64_t nb = NBConfig::value();
 
     // create SLATE matrix from the LAPACK data
-    auto A = slate::TriangularMatrix<scalar_t>::fromLAPACK(uplo, diag, n, a, lda, nb, p, q, MPI_COMM_WORLD);
+    auto A = slate::TriangularMatrix<scalar_t>::fromLAPACK(
+        uplo, diag, n,
+        A_data, lda,
+        nb, p, q, MPI_COMM_SELF );
 
     blas::real_type<scalar_t> Anorm = slate::norm( norm, A, {
         {slate::Option::Target, target}
@@ -83,15 +64,15 @@ void slate_trcon(const char* normstr, const char* uplostr, const char* diagstr, 
         {slate::Option::Target, target}
     });
 
-    // todo:  get a real value for info
+    // todo:  get A_data real value for info
     *info = 0;
 
     if (verbose) {
-        std::cout << "slate_lapack_api: " << to_char(a) << "trcon( "
-                  << normstr[0] << ", " << uplostr[0] << ", "
-                  << diagstr[0] << ", "
+        std::cout << "slate_lapack_api: " << to_char(A_data) << "trcon( "
+                  << norm_str[0] << ", " << uplo_str[0] << ", "
+                  << diag_str[0] << ", "
                   << n << ", "
-                  << (void*)a << ", " << lda << ", "
+                  << (void*)A_data << ", " << lda << ", "
                   << Anorm << ", " << (void*)rcond << ", "
                   << (void*)work << ", " << (void*)iwork << ", "
                   << *info << " ) "
@@ -100,6 +81,73 @@ void slate_trcon(const char* normstr, const char* uplostr, const char* diagstr, 
                   << " max_threads: " << omp_get_max_threads() << "\n";
     }
 }
+
+//------------------------------------------------------------------------------
+// Fortran interfaces
+
+extern "C" {
+
+#define slate_strcon BLAS_FORTRAN_NAME( slate_strcon, SLATE_STRCON )
+void slate_strcon(
+    const char* norm, const char* uplo, const char* diag, blas_int const* n,
+    float* A_data, blas_int const* lda,
+    float* rcond,
+    float* work,
+    blas_int* iwork,
+    blas_int* info )
+{
+    slate_trcon(
+        norm, uplo, diag, *n,
+        A_data, *lda, rcond,
+        work, iwork, info );
+}
+
+#define slate_dtrcon BLAS_FORTRAN_NAME( slate_dtrcon, SLATE_DTRCON )
+void slate_dtrcon(
+    const char* norm, const char* uplo, const char* diag, blas_int const* n,
+    double* A_data, blas_int const* lda,
+    double* rcond,
+    double* work,
+    blas_int* iwork,
+    blas_int* info )
+{
+    slate_trcon(
+        norm, uplo, diag, *n,
+        A_data, *lda, rcond,
+        work, iwork, info );
+}
+
+#define slate_ctrcon BLAS_FORTRAN_NAME( slate_ctrcon, SLATE_CTRCON )
+void slate_ctrcon(
+    const char* norm, const char* uplo, const char* diag, blas_int const* n,
+    std::complex<float>* A_data, blas_int const* lda,
+    float* rcond,
+    std::complex<float>* work,
+    blas_int* iwork,
+    blas_int* info )
+{
+    slate_trcon(
+        norm, uplo, diag, *n,
+        A_data, *lda, rcond,
+        work, iwork, info );
+}
+
+#define slate_ztrcon BLAS_FORTRAN_NAME( slate_ztrcon, SLATE_ZTRCON )
+void slate_ztrcon(
+    const char* norm, const char* uplo, const char* diag, blas_int const* n,
+    std::complex<double>* A_data, blas_int const* lda,
+    double* rcond,
+    std::complex<double>* work,
+    blas_int* iwork,
+    blas_int* info )
+{
+    slate_trcon(
+        norm, uplo, diag, *n,
+        A_data, *lda, rcond,
+        work, iwork, info );
+}
+
+} // extern "C"
 
 } // namespace lapack_api
 } // namespace slate

@@ -8,45 +8,30 @@
 namespace slate {
 namespace lapack_api {
 
-// -----------------------------------------------------------------------------
-using lld = long long int;
-
-// Local function
+//------------------------------------------------------------------------------
+/// SLATE ScaLAPACK wrapper sets up SLATE matrices from ScaLAPACK descriptors
+/// and calls SLATE.
 template< typename scalar_t, typename half_scalar_t >
-void slate_gesv(const int n, const int nrhs, scalar_t* a, const int lda, int* ipiv, scalar_t* b, const int ldb, scalar_t* x, const int ldx, scalar_t* work, half_scalar_t* swork, int* iter, int* info);
-
-// -----------------------------------------------------------------------------
-// C interfaces (FORTRAN_UPPER, FORTRAN_LOWER, FORTRAN_UNDERSCORE)
-
-#define slate_dsgesv BLAS_FORTRAN_NAME( slate_dsgesv, SLATE_DSGESV )
-#define slate_zcgesv BLAS_FORTRAN_NAME( slate_zcgesv, SLATE_ZCGESV )
-
-extern "C" void slate_dsgesv(const int* n, const int* nrhs, double* a, const int* lda, int* ipiv, double* b, const int* ldb, double* x, const int* ldx, double* work, float* swork, int* iter, int* info)
-{
-    slate_gesv(*n, *nrhs, a, *lda, ipiv, b, *ldb, x, *ldx, work, swork, iter, info);
-}
-
-extern "C" void slate_zcgesv(const int* n, const int* nrhs, std::complex<double>* a, const int* lda, int* ipiv, std::complex<double>* b, const int* ldb, std::complex<double>* x, const int* ldx, std::complex<double>* work, std::complex<float>* swork, int* iter, int* info)
-{
-    slate_gesv(*n, *nrhs, a, *lda, ipiv, b, *ldb, x, *ldx, work, swork, iter, info);
-}
-
-// -----------------------------------------------------------------------------
-
-// Type generic function calls the SLATE routine
-template< typename scalar_t, typename half_scalar_t >
-void slate_gesv(const int n, const int nrhs, scalar_t* a, const int lda, int* ipiv, scalar_t* b, const int ldb, scalar_t* x, const int ldx, scalar_t* work, half_scalar_t* swork, int* iter, int* info)
+void slate_gesv(
+    blas_int n, blas_int nrhs,
+    scalar_t* A_data, blas_int lda,
+    blas_int* ipiv,
+    scalar_t* B_data, blas_int ldb,
+    scalar_t* X_data, blas_int ldx,
+    scalar_t* work, half_scalar_t* swork, blas_int* iter,
+    blas_int* info )
 {
     // Start timing
     int verbose = VerboseConfig::value();
     double timestart = 0.0;
-    if (verbose) timestart = omp_get_wtime();
+    if (verbose)
+        timestart = omp_get_wtime();
 
     // Check and initialize MPI, else SLATE calls to MPI will fail
-    int initialized, provided;
-    MPI_Initialized(&initialized);
+    blas_int initialized, provided;
+    MPI_Initialized( &initialized );
     if (! initialized)
-        MPI_Init_thread(nullptr, nullptr, MPI_THREAD_MULTIPLE, &provided);
+        MPI_Init_thread( nullptr, nullptr, MPI_THREAD_MULTIPLE, &provided );
 
     int64_t lookahead = 1;
     int64_t p = 1;
@@ -58,12 +43,22 @@ void slate_gesv(const int n, const int nrhs, scalar_t* a, const int lda, int* ip
     slate::Pivots pivots;
 
     // create SLATE matrices from the LAPACK data
-    auto A = slate::Matrix<scalar_t>::fromLAPACK(n, n, a, lda, nb, p, q, MPI_COMM_WORLD);
-    auto B = slate::Matrix<scalar_t>::fromLAPACK(n, nrhs, b, ldb, nb, p, q, MPI_COMM_WORLD);
-    auto X = slate::Matrix<scalar_t>::fromLAPACK(n, nrhs, b, ldb, nb, p, q, MPI_COMM_WORLD);
+    auto A = slate::Matrix<scalar_t>::fromLAPACK(
+        n, n,
+        A_data, lda,
+        nb, p, q, MPI_COMM_SELF );
+    auto B = slate::Matrix<scalar_t>::fromLAPACK(
+        n, nrhs,
+        B_data, ldb,
+        nb, p, q, MPI_COMM_SELF );
+    auto X = slate::Matrix<scalar_t>::fromLAPACK(
+        n, nrhs,
+        B_data, ldb,
+        nb, p, q, MPI_COMM_SELF );
 
-    // computes the solution to the system of linear equations with a square coefficient matrix A and multiple right-hand sides.
-    int iters;
+    // computes the solution to the system of linear equations with a
+    // square coefficient matrix A and multiple right-hand sides.
+    blas_int iters;
     slate::gesv_mixed(
         A, pivots, B, X, iters, {
         {slate::Option::Lookahead, lookahead},
@@ -74,6 +69,7 @@ void slate_gesv(const int n, const int nrhs, scalar_t* a, const int lda, int* ip
     *iter = iters;
 
     // extract pivots from SLATE's Pivots structure into LAPACK ipiv array
+    // todo: rewrite with C++ `for (p : pivots)`
     {
         int64_t p_count = 0;
         int64_t t_iter_add = 0;
@@ -86,15 +82,16 @@ void slate_gesv(const int n, const int nrhs, scalar_t* a, const int lda, int* ip
         }
     }
 
-    // todo:  get a real value for info
+    // todo:  get A_data real value for info
     *info = 0;
 
     if (verbose) {
-        std::cout << "slate_lapack_api: " << to_char(a) << to_char(swork) << "gesv( "
+        std::cout << "slate_lapack_api: "
+                  << to_char(A_data) << to_char(swork) << "gesv( "
                   << n << ", " << nrhs << ", "
-                  << (void*)a << ", " << lda << ", " << (void*)ipiv << ", "
-                  << (void*)b << ", " << ldb
-                  << (void*)x << ", " << ldx << ", "
+                  << (void*)A_data << ", " << lda << ", " << (void*)ipiv << ", "
+                  << (void*)B_data << ", " << ldb
+                  << (void*)X_data << ", " << ldx << ", "
                   << (void*)work << ", " << (void*)swork << ", "
                   << iter << ", "
                   << *info << " ) "
@@ -103,6 +100,49 @@ void slate_gesv(const int n, const int nrhs, scalar_t* a, const int lda, int* ip
                   << " max_threads: " << omp_get_max_threads() << "\n";
     }
 }
+
+//------------------------------------------------------------------------------
+// Fortran interfaces
+
+extern "C" {
+
+#define slate_dsgesv BLAS_FORTRAN_NAME( slate_dsgesv, SLATE_DSGESV )
+void slate_dsgesv(
+    blas_int const* n, blas_int const* nrhs,
+    double* A_data, blas_int const* lda,
+    blas_int* ipiv,
+    double* B_data, blas_int const* ldb,
+    double* X_data, blas_int const* ldx,
+    double* work, float* swork, blas_int* iter,
+    blas_int* info )
+{
+    slate_gesv(
+        *n, *nrhs,
+        A_data, *lda, ipiv,
+        B_data, *ldb,
+        X_data, *ldx,
+        work, swork, iter, info );
+}
+
+#define slate_zcgesv BLAS_FORTRAN_NAME( slate_zcgesv, SLATE_ZCGESV )
+void slate_zcgesv(
+    blas_int const* n, blas_int const* nrhs,
+    std::complex<double>* A_data, blas_int const* lda,
+    blas_int* ipiv,
+    std::complex<double>* B_data, blas_int const* ldb,
+    std::complex<double>* X_data, blas_int const* ldx,
+    std::complex<double>* work, std::complex<float>* swork, blas_int* iter,
+    blas_int* info )
+{
+    slate_gesv(
+        *n, *nrhs,
+        A_data, *lda, ipiv,
+        B_data, *ldb,
+        X_data, *ldx,
+        work, swork, iter, info );
+}
+
+} // extern "C"
 
 } // namespace lapack_api
 } // namespace slate

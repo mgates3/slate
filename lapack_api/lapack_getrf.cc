@@ -8,55 +8,26 @@
 namespace slate {
 namespace lapack_api {
 
-// -----------------------------------------------------------------------------
-
-// Local function
+//------------------------------------------------------------------------------
+/// SLATE ScaLAPACK wrapper sets up SLATE matrices from ScaLAPACK descriptors
+/// and calls SLATE.
 template <typename scalar_t>
-void slate_getrf(const int m, const int n, scalar_t* a, const int lda, int* ipiv, int* info);
-
-// -----------------------------------------------------------------------------
-// C interfaces (FORTRAN_UPPER, FORTRAN_LOWER, FORTRAN_UNDERSCORE)
-
-#define slate_sgetrf BLAS_FORTRAN_NAME( slate_sgetrf, SLATE_SGETRF )
-#define slate_dgetrf BLAS_FORTRAN_NAME( slate_dgetrf, SLATE_DGETRF )
-#define slate_cgetrf BLAS_FORTRAN_NAME( slate_cgetrf, SLATE_CGETRF )
-#define slate_zgetrf BLAS_FORTRAN_NAME( slate_zgetrf, SLATE_ZGETRF )
-
-extern "C" void slate_sgetrf(const int* m, const int* n, float* a, const int* lda, int* ipiv, int* info)
-{
-    slate_getrf(*m, *n, a, *lda, ipiv, info);
-}
-
-extern "C" void slate_dgetrf(const int* m, const int* n, double* a, const int* lda, int* ipiv, int* info)
-{
-    slate_getrf(*m, *n, a, *lda, ipiv, info);
-}
-
-extern "C" void slate_cgetrf(const int* m, const int* n, std::complex<float>* a, const int* lda, int* ipiv, int* info)
-{
-    slate_getrf(*m, *n, a, *lda, ipiv, info);
-}
-
-extern "C" void slate_zgetrf(const int* m, const int* n, std::complex<double>* a, const int* lda, int* ipiv, int* info)
-{
-    slate_getrf(*m, *n, a, *lda, ipiv, info);
-}
-
-// -----------------------------------------------------------------------------
-
-// Type generic function calls the SLATE routine
-template <typename scalar_t>
-void slate_getrf(const int m, const int n, scalar_t* a, const int lda, int* ipiv, int* info)
+void slate_getrf(
+    blas_int m, blas_int n,
+    scalar_t* A_data, blas_int lda,
+    blas_int* ipiv,
+    blas_int* info )
 {
     // Start timing
     int verbose = VerboseConfig::value();
     double timestart = 0.0;
-    if (verbose) timestart = omp_get_wtime();
+    if (verbose)
+        timestart = omp_get_wtime();
 
-    int initialized, provided;
-    MPI_Initialized(&initialized);
+    blas_int initialized, provided;
+    MPI_Initialized( &initialized );
     if (! initialized)
-        MPI_Init_thread(nullptr, nullptr, MPI_THREAD_MULTIPLE, &provided);
+        MPI_Init_thread( nullptr, nullptr, MPI_THREAD_MULTIPLE, &provided );
 
     // Test the input parameters
     *info = 0;
@@ -86,10 +57,13 @@ void slate_getrf(const int m, const int n, scalar_t* a, const int lda, int* ipiv
     slate::Pivots pivots;
 
     // create SLATE matrices from the Lapack layouts
-    auto A = slate::Matrix<scalar_t>::fromLAPACK(Am, An, a, lda, nb, p, q, MPI_COMM_WORLD);
+    auto A = slate::Matrix<scalar_t>::fromLAPACK(
+        Am, An,
+        A_data, lda,
+        nb, p, q, MPI_COMM_SELF );
 
     // factorize using slate
-    slate::getrf(A, pivots, {
+    slate::getrf( A, pivots, {
         {slate::Option::Lookahead, lookahead},
         {slate::Option::Target, target},
         {slate::Option::MaxPanelThreads, panel_threads},
@@ -109,19 +83,66 @@ void slate_getrf(const int m, const int n, scalar_t* a, const int lda, int* ipiv
         }
     }
 
-    // todo: get a real value for info
+    // todo: get A_data real value for info
     *info = 0;
 
     if (verbose) {
-        std::cout << "slate_lapack_api: " << to_char(a) << "getrf( "
+        std::cout << "slate_lapack_api: " << to_char(A_data) << "getrf( "
                   << m << ", " << n << ", "
-                  << (void*)a << ", " << lda << ", " << (void*)ipiv << ", "
+                  << (void*)A_data << ", " << lda << ", " << (void*)ipiv << ", "
                   << *info << " ) "
                   << (omp_get_wtime() - timestart) << " sec"
                   << " nb: " << nb
                   << " max_threads: " << omp_get_max_threads() << "\n";
     }
 }
+
+//------------------------------------------------------------------------------
+// Fortran interfaces
+
+extern "C" {
+
+#define slate_sgetrf BLAS_FORTRAN_NAME( slate_sgetrf, SLATE_SGETRF )
+void slate_sgetrf(
+    blas_int const* m, blas_int const* n,
+    float* A_data, blas_int const* lda,
+    blas_int* ipiv,
+    blas_int* info )
+{
+    slate_getrf( *m, *n, A_data, *lda, ipiv, info );
+}
+
+#define slate_dgetrf BLAS_FORTRAN_NAME( slate_dgetrf, SLATE_DGETRF )
+void slate_dgetrf(
+    blas_int const* m, blas_int const* n,
+    double* A_data, blas_int const* lda,
+    blas_int* ipiv,
+    blas_int* info )
+{
+    slate_getrf( *m, *n, A_data, *lda, ipiv, info );
+}
+
+#define slate_cgetrf BLAS_FORTRAN_NAME( slate_cgetrf, SLATE_CGETRF )
+void slate_cgetrf(
+    blas_int const* m, blas_int const* n,
+    std::complex<float>* A_data, blas_int const* lda,
+    blas_int* ipiv,
+    blas_int* info )
+{
+    slate_getrf( *m, *n, A_data, *lda, ipiv, info );
+}
+
+#define slate_zgetrf BLAS_FORTRAN_NAME( slate_zgetrf, SLATE_ZGETRF )
+void slate_zgetrf(
+    blas_int const* m, blas_int const* n,
+    std::complex<double>* A_data, blas_int const* lda,
+    blas_int* ipiv,
+    blas_int* info )
+{
+    slate_getrf( *m, *n, A_data, *lda, ipiv, info );
+}
+
+} // extern "C"
 
 } // namespace lapack_api
 } // namespace slate

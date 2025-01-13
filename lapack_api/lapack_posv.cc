@@ -8,61 +8,30 @@
 namespace slate {
 namespace lapack_api {
 
-// -----------------------------------------------------------------------------
-
-// Local function
+//------------------------------------------------------------------------------
+/// SLATE ScaLAPACK wrapper sets up SLATE matrices from ScaLAPACK descriptors
+/// and calls SLATE.
 template <typename scalar_t>
-void slate_posv(const char* uplostr, const int n, const int nrhs, scalar_t* a, const int lda, scalar_t* b, const int ldb, int* info);
-
-using lld = long long int;
-
-// -----------------------------------------------------------------------------
-// C interfaces (FORTRAN_UPPER, FORTRAN_LOWER, FORTRAN_UNDERSCORE)
-
-#define slate_sposv BLAS_FORTRAN_NAME( slate_sposv, SLATE_SPOSV )
-#define slate_dposv BLAS_FORTRAN_NAME( slate_dposv, SLATE_DPOSV )
-#define slate_cposv BLAS_FORTRAN_NAME( slate_cposv, SLATE_CPOSV )
-#define slate_zposv BLAS_FORTRAN_NAME( slate_zposv, SLATE_ZPOSV )
-
-extern "C" void slate_sposv(const char* uplo, const int* n, const int* nrhs, float* a, const int* lda, float* b, const int* ldb, int* info)
-{
-    slate_posv(uplo, *n, *nrhs, a, *lda, b, *ldb, info);
-}
-
-extern "C" void slate_dposv(const char* uplo, const int* n, const int* nrhs, double* a, const int* lda, double* b, const int* ldb, int* info)
-{
-    slate_posv(uplo, *n, *nrhs, a, *lda, b, *ldb, info);
-}
-
-extern "C" void slate_cposv(const char* uplo, const int* n, const int* nrhs, std::complex<float>* a, const int* lda, std::complex<float>* b, const int* ldb, int* info)
-{
-    slate_posv(uplo, *n, *nrhs, a, *lda, b, *ldb, info);
-}
-
-extern "C" void slate_zposv(const char* uplo, const int* n, const int* nrhs, std::complex<double>* a, const int* lda, std::complex<double>* b, const int* ldb, int* info)
-{
-    slate_posv(uplo, *n, *nrhs, a, *lda, b, *ldb, info);
-}
-
-// -----------------------------------------------------------------------------
-
-// Type generic function calls the SLATE routine
-template <typename scalar_t>
-void slate_posv(const char* uplostr, const int n, const int nrhs, scalar_t* a, const int lda, scalar_t* b, const int ldb, int* info)
+void slate_posv(
+    const char* uplo_str, blas_int n, blas_int nrhs,
+    scalar_t* A_data, blas_int lda,
+    scalar_t* B_data, blas_int ldb,
+    blas_int* info )
 {
     // Start timing
     int verbose = VerboseConfig::value();
     double timestart = 0.0;
-    if (verbose) timestart = omp_get_wtime();
+    if (verbose)
+        timestart = omp_get_wtime();
 
     // Check and initialize MPI, else SLATE calls to MPI will fail
-    int initialized, provided;
-    MPI_Initialized(&initialized);
+    blas_int initialized, provided;
+    MPI_Initialized( &initialized );
     if (! initialized)
-        MPI_Init_thread(nullptr, nullptr, MPI_THREAD_MULTIPLE, &provided);
+        MPI_Init_thread( nullptr, nullptr, MPI_THREAD_MULTIPLE, &provided );
 
     Uplo uplo{};
-    from_string( std::string( 1, uplostr[0] ), &uplo );
+    from_string( std::string( 1, uplo_str[0] ), &uplo );
 
     int64_t lookahead = 1;
     int64_t p = 1;
@@ -72,30 +41,84 @@ void slate_posv(const char* uplostr, const int n, const int nrhs, scalar_t* a, c
     slate::Pivots pivots;
 
     // create SLATE matrices from the LAPACK data
-    auto A = slate::HermitianMatrix<scalar_t>::fromLAPACK(uplo, n, a, lda, nb, p, q, MPI_COMM_WORLD);
-    auto B = slate::Matrix<scalar_t>::fromLAPACK(n, nrhs, b, ldb, nb, p, q, MPI_COMM_WORLD);
+    auto A = slate::HermitianMatrix<scalar_t>::fromLAPACK(
+        uplo, n,
+        A_data, lda,
+        nb, p, q, MPI_COMM_SELF );
+    auto B = slate::Matrix<scalar_t>::fromLAPACK(
+        n, nrhs,
+        B_data, ldb,
+        nb, p, q, MPI_COMM_SELF );
 
-    // computes the solution to the system of linear equations with a square coefficient matrix A and multiple right-hand sides.
-    slate::posv(A, B, {
+    // computes the solution to the system of linear equations with a
+    // square coefficient matrix A and multiple right-hand sides.
+    slate::posv( A, B, {
         {slate::Option::Lookahead, lookahead},
         {slate::Option::Target, target}
     });
 
-    // todo:  get a real value for info
+    // todo:  get A_data real value for info
     *info = 0;
 
     if (verbose) {
-        std::cout << "slate_lapack_api: " << to_char(a) << "posv( "
-                  << uplostr[0] << ", "
+        std::cout << "slate_lapack_api: " << to_char(A_data) << "posv( "
+                  << uplo_str[0] << ", "
                   << n << ", " << nrhs << ", "
-                  << (void*)a << ", " << lda << ", "
-                  << (void*)b << ", " << ldb << ", "
+                  << (void*)A_data << ", " << lda << ", "
+                  << (void*)B_data << ", " << ldb << ", "
                   << *info << " ) "
                   << (omp_get_wtime() - timestart) << " sec"
                   << " nb: " << nb
                   << " max_threads: " << omp_get_max_threads() << "\n";
     }
 }
+
+//------------------------------------------------------------------------------
+// Fortran interfaces
+
+extern "C" {
+
+#define slate_sposv BLAS_FORTRAN_NAME( slate_sposv, SLATE_SPOSV )
+void slate_sposv(
+    const char* uplo, blas_int const* n, blas_int const* nrhs,
+    float* A_data, blas_int const* lda,
+    float* B_data, blas_int const* ldb,
+    blas_int* info )
+{
+    slate_posv( uplo, *n, *nrhs, A_data, *lda, B_data, *ldb, info );
+}
+
+#define slate_dposv BLAS_FORTRAN_NAME( slate_dposv, SLATE_DPOSV )
+void slate_dposv(
+    const char* uplo, blas_int const* n, blas_int const* nrhs,
+    double* A_data, blas_int const* lda,
+    double* B_data, blas_int const* ldb,
+    blas_int* info )
+{
+    slate_posv( uplo, *n, *nrhs, A_data, *lda, B_data, *ldb, info );
+}
+
+#define slate_cposv BLAS_FORTRAN_NAME( slate_cposv, SLATE_CPOSV )
+void slate_cposv(
+    const char* uplo, blas_int const* n, blas_int const* nrhs,
+    std::complex<float>* A_data, blas_int const* lda,
+    std::complex<float>* B_data, blas_int const* ldb,
+    blas_int* info )
+{
+    slate_posv( uplo, *n, *nrhs, A_data, *lda, B_data, *ldb, info );
+}
+
+#define slate_zposv BLAS_FORTRAN_NAME( slate_zposv, SLATE_ZPOSV )
+void slate_zposv(
+    const char* uplo, blas_int const* n, blas_int const* nrhs,
+    std::complex<double>* A_data, blas_int const* lda,
+    std::complex<double>* B_data, blas_int const* ldb,
+    blas_int* info )
+{
+    slate_posv( uplo, *n, *nrhs, A_data, *lda, B_data, *ldb, info );
+}
+
+} // extern "C"
 
 } // namespace lapack_api
 } // namespace slate

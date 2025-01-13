@@ -8,46 +8,22 @@
 namespace slate {
 namespace lapack_api {
 
-// -----------------------------------------------------------------------------
-// Local function
+//------------------------------------------------------------------------------
+/// SLATE ScaLAPACK wrapper sets up SLATE matrices from ScaLAPACK descriptors
+/// and calls SLATE.
 template <typename scalar_t>
-void slate_heev(const char* jobzstr, const char* uplostr, const int n, scalar_t* a, const int lda, blas::real_type<scalar_t>* w, scalar_t* work, const int lwork, blas::real_type<scalar_t>* rwork, int* info);
-
-// -----------------------------------------------------------------------------
-// C interfaces (FORTRAN_UPPER, FORTRAN_LOWER, FORTRAN_UNDERSCORE)
-
-#define slate_ssyev BLAS_FORTRAN_NAME( slate_ssyev, SLATE_SSYEV )
-#define slate_dsyev BLAS_FORTRAN_NAME( slate_dsyev, SLATE_DSYEV )
-#define slate_cheev BLAS_FORTRAN_NAME( slate_cheev, SLATE_CHEEV )
-#define slate_zheev BLAS_FORTRAN_NAME( slate_zheev, SLATE_ZHEEV )
-
-extern "C" void slate_ssyev(const char* jobzstr, const char* uplostr, const int* n, float* a, const int* lda, float* w, float* work, const int* lwork, int* info)
-{
-    slate_heev(jobzstr, uplostr, *n, a, *lda, w, work, *lwork, nullptr, info);
-}
-extern "C" void slate_dsyev(const char* jobzstr, const char* uplostr, const int* n, double* a, const int* lda, double* w, double* work, const int* lwork, int* info)
-{
-    slate_heev(jobzstr, uplostr, *n, a, *lda, w, work, *lwork, nullptr, info);
-}
-extern "C" void slate_cheev(const char* jobzstr, const char* uplostr, const int* n, std::complex<float>* a, const int* lda, float* w, std::complex<float>* work, const int* lwork, float* rwork, int* info)
-{
-    slate_heev(jobzstr, uplostr, *n, a, *lda, w, work, *lwork, rwork, info);
-}
-extern "C" void slate_zheev(const char* jobzstr, const char* uplostr, const int* n, std::complex<double>* a, const int* lda, double* w, std::complex<double>* work, const int* lwork, double* rwork, int* info)
-{
-    slate_heev(jobzstr, uplostr, *n, a, *lda, w, work, *lwork, rwork, info);
-}
-
-// -----------------------------------------------------------------------------
-
-// Type generic function calls the SLATE routine
-template <typename scalar_t>
-void slate_heev(const char* jobzstr, const char* uplostr, const int n, scalar_t* a, const int lda, blas::real_type<scalar_t>* w, scalar_t* work, const int lwork, blas::real_type<scalar_t>* rwork, int* info)
+void slate_heev(
+    const char* jobz_str, const char* uplo_str, blas_int n,
+    scalar_t* A_data, blas_int lda,
+    blas::real_type<scalar_t>* w,
+    scalar_t* work, blas_int lwork, blas::real_type<scalar_t>* rwork,
+    blas_int* info )
 {
     // Start timing
     int verbose = VerboseConfig::value();
     double timestart = 0.0;
-    if (verbose) timestart = omp_get_wtime();
+    if (verbose)
+        timestart = omp_get_wtime();
 
     // sizes
     slate::Target target = TargetConfig::value();
@@ -61,31 +37,34 @@ void slate_heev(const char* jobzstr, const char* uplostr, const int n, scalar_t*
     }
     else {
         // Check and initialize MPI, else SLATE calls to MPI will fail
-        int initialized, provided;
-        MPI_Initialized(&initialized);
+        blas_int initialized, provided;
+        MPI_Initialized( &initialized );
         if (! initialized)
-            MPI_Init_thread(nullptr, nullptr, MPI_THREAD_MULTIPLE, &provided);
+            MPI_Init_thread( nullptr, nullptr, MPI_THREAD_MULTIPLE, &provided );
 
         int64_t lookahead = 1;
         int64_t p = 1;
         int64_t q = 1;
 
         Uplo uplo{};
-        from_string( std::string( 1, uplostr[0] ), &uplo );
+        from_string( std::string( 1, uplo_str[0] ), &uplo );
 
         // create SLATE matrix from the LAPACK data
-        auto A = slate::Matrix<scalar_t>::fromLAPACK( n, n, a, lda, nb, p, q, MPI_COMM_WORLD );
+        auto A = slate::Matrix<scalar_t>::fromLAPACK( n, n,
+        A_data, lda,
+        nb, p, q, MPI_COMM_SELF );
         slate::HermitianMatrix<scalar_t> AH( uplo, A );
         std::vector< blas::real_type<scalar_t> > Lambda_( n );
 
         slate::Matrix<scalar_t> Z;
-        switch (jobzstr[0]) {
+        switch (jobz_str[0]) {
             case 'V':
                 if (lwork >= n * n) {
-                    Z = slate::Matrix<scalar_t>::fromLAPACK( n, n, work, n, nb, p, q, MPI_COMM_WORLD );
+                    Z = slate::Matrix<scalar_t>::fromLAPACK(
+                        n, n, work, n, nb, p, q, MPI_COMM_SELF );
                 }
                 else {
-                    Z = slate::Matrix<scalar_t>( n, n, nb, p, q, MPI_COMM_WORLD );
+                    Z = slate::Matrix<scalar_t>( n, n, nb, p, q, MPI_COMM_SELF );
                     Z.insertLocalTiles(target);
                 }
                 break;
@@ -106,7 +85,7 @@ void slate_heev(const char* jobzstr, const char* uplostr, const int n, scalar_t*
 
             std::copy(Lambda_.begin(), Lambda_.end(), w);
 
-            if (jobzstr[0] == 'V') {
+            if (jobz_str[0] == 'V') {
                 slate::copy( Z, A, {
                     {slate::Option::Target, target}
                 });
@@ -115,10 +94,10 @@ void slate_heev(const char* jobzstr, const char* uplostr, const int n, scalar_t*
     }
 
     if (verbose) {
-        std::cout << "slate_lapack_api: " << to_char(a) << "heev( "
-                  << jobzstr[0] << ", " << uplostr[0] << ", "
+        std::cout << "slate_lapack_api: " << to_char(A_data) << "heev( "
+                  << jobz_str[0] << ", " << uplo_str[0] << ", "
                   << n << ", "
-                  << (void*)a << ", " << lda << ", " << (void*)w << ", "
+                  << (void*)A_data << ", " << lda << ", " << (void*)w << ", "
                   << (void*)work << ", " << lwork << ", ";
         if (is_complex<scalar_t>::value) {
             std::cout << (void*)rwork << ", ";
@@ -129,6 +108,77 @@ void slate_heev(const char* jobzstr, const char* uplostr, const int n, scalar_t*
                   << " max_threads: " << omp_get_max_threads() << "\n";
     }
 }
+
+//------------------------------------------------------------------------------
+// Fortran interfaces
+
+extern "C" {
+
+#define slate_ssyev BLAS_FORTRAN_NAME( slate_ssyev, SLATE_SSYEV )
+void slate_ssyev(
+    const char* jobz_str, const char* uplo, blas_int const* n,
+    float* A_data, blas_int const* lda,
+    float* w,
+    float* work, blas_int const* lwork,
+    blas_int* info )
+{
+    float dummy;  // in place of rwork
+    slate_heev(
+        jobz_str, uplo, *n,
+        A_data, *lda, w,
+        work, *lwork,
+        &dummy, info );
+}
+
+#define slate_dsyev BLAS_FORTRAN_NAME( slate_dsyev, SLATE_DSYEV )
+void slate_dsyev(
+    const char* jobz_str, const char* uplo, blas_int const* n,
+    double* A_data, blas_int const* lda,
+    double* w,
+    double* work, blas_int const* lwork,
+    blas_int* info )
+{
+    double dummy;  // in place of rwork
+    slate_heev(
+        jobz_str, uplo, *n,
+        A_data, *lda, w,
+        work, *lwork,
+        &dummy, info );
+}
+
+#define slate_cheev BLAS_FORTRAN_NAME( slate_cheev, SLATE_CHEEV )
+void slate_cheev(
+    const char* jobz_str, const char* uplo, blas_int const* n,
+    std::complex<float>* A_data, blas_int const* lda,
+    float* w,
+    std::complex<float>* work, blas_int const* lwork,
+    float* rwork,
+    blas_int* info )
+{
+    slate_heev(
+        jobz_str, uplo, *n,
+        A_data, *lda, w,
+        work, *lwork,
+        rwork, info );
+}
+
+#define slate_zheev BLAS_FORTRAN_NAME( slate_zheev, SLATE_ZHEEV )
+void slate_zheev(
+    const char* jobz_str, const char* uplo, blas_int const* n,
+    std::complex<double>* A_data, blas_int const* lda,
+    double* w,
+    std::complex<double>* work, blas_int const* lwork,
+    double* rwork,
+    blas_int* info )
+{
+    slate_heev(
+        jobz_str, uplo, *n,
+        A_data, *lda, w,
+        work, *lwork,
+        rwork, info );
+}
+
+} // extern "C"
 
 } // namespace lapack_api
 } // namespace slate

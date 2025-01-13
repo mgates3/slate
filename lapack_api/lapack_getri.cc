@@ -8,47 +8,20 @@
 namespace slate {
 namespace lapack_api {
 
-// -----------------------------------------------------------------------------
-// Local function
+//------------------------------------------------------------------------------
+/// SLATE ScaLAPACK wrapper sets up SLATE matrices from ScaLAPACK descriptors
+/// and calls SLATE.
 template <typename scalar_t>
-void slate_getri(const int n, scalar_t* a, const int lda, int* ipiv, scalar_t* work, const int lwork, int* info);
-
-// -----------------------------------------------------------------------------
-// C interfaces (FORTRAN_UPPER, FORTRAN_LOWER, FORTRAN_UNDERSCORE)
-
-#define slate_sgetri BLAS_FORTRAN_NAME( slate_sgetri, SLATE_SGETRI )
-#define slate_dgetri BLAS_FORTRAN_NAME( slate_dgetri, SLATE_DGETRI )
-#define slate_cgetri BLAS_FORTRAN_NAME( slate_cgetri, SLATE_CGETRI )
-#define slate_zgetri BLAS_FORTRAN_NAME( slate_zgetri, SLATE_ZGETRI )
-
-extern "C" void slate_sgetri(const int* n, float* a, const int* lda, int* ipiv, float* work, int* lwork, int* info)
-{
-    slate_getri(*n, a, *lda, ipiv, work, *lwork, info);
-}
-
-extern "C" void slate_dgetri(const int* n, double* a, const int* lda, int* ipiv, double* work, int* lwork, int* info)
-{
-    slate_getri(*n, a, *lda, ipiv, work, *lwork, info);
-}
-
-extern "C" void slate_cgetri(const int* n, std::complex<float>* a, const int* lda, int* ipiv, std::complex<float>* work, int* lwork, int* info)
-{
-    slate_getri(*n, a, *lda, ipiv, work, *lwork, info);
-}
-
-extern "C" void slate_zgetri(const int* n, std::complex<double>* a, const int* lda, int* ipiv, std::complex<double>* work, int* lwork, int* info)
-{
-    slate_getri(*n, a, *lda, ipiv, work, *lwork, info);
-}
-
-// -----------------------------------------------------------------------------
-// Type generic function calls the SLATE routine
-template <typename scalar_t>
-void slate_getri(const int n, scalar_t* a, const int lda, int* ipiv, scalar_t* work, const int lwork, int* info)
+void slate_getri(
+    blas_int n,
+    scalar_t* A_data, blas_int lda,
+    blas_int* ipiv,
+    scalar_t* work, blas_int lwork,
+    blas_int* info )
 {
     using real_t = blas::real_type<scalar_t>;
 
-    // Respond to workspace query with a minimal value (1); workspace
+    // Respond to workspace query with A_data minimal value (1); workspace
     // is allocated within the SLATE routine.
     if (lwork == -1) {
         work[0] = (real_t)1.0;
@@ -59,14 +32,15 @@ void slate_getri(const int n, scalar_t* a, const int lda, int* ipiv, scalar_t* w
     // Start timing
     int verbose = VerboseConfig::value();
     double timestart = 0.0;
-    if (verbose) timestart = omp_get_wtime();
+    if (verbose)
+        timestart = omp_get_wtime();
 
     // Check and initialize MPI, else SLATE calls to MPI will fail
     // Since this is an lapack wrapper there will be only one MPI process
-    int initialized=0, provided=0;
-    MPI_Initialized(&initialized);
+    blas_int initialized=0, provided=0;
+    MPI_Initialized( &initialized );
     if (! initialized)
-        MPI_Init_thread(nullptr, nullptr, MPI_THREAD_MULTIPLE, &provided);
+        MPI_Init_thread( nullptr, nullptr, MPI_THREAD_MULTIPLE, &provided );
 
     int64_t lookahead = 1;
     int64_t p = 1;
@@ -77,16 +51,19 @@ void slate_getri(const int n, scalar_t* a, const int lda, int* ipiv, scalar_t* w
     int64_t nb = NBConfig::value();
 
     // create SLATE matrices from the LAPACK data
-    auto A = slate::Matrix<scalar_t>::fromLAPACK(n, n, a, lda, nb, p, q, MPI_COMM_WORLD);
+    auto A = slate::Matrix<scalar_t>::fromLAPACK(
+        n, n,
+        A_data, lda,
+        nb, p, q, MPI_COMM_SELF );
 
     // extract pivots from LAPACK ipiv to SLATES pivot structure
     slate::Pivots pivots; // std::vector< std::vector<Pivot> >
     {
         // allocate pivots
-        const int64_t min_mt_nt = std::min(A.mt(), A.nt());
+        int64_t min_mt_nt = std::min(A.mt(), A.nt());
         pivots.resize(min_mt_nt);
         for (int64_t k = 0; k < min_mt_nt; ++k) {
-            const int64_t diag_len = std::min(A.tileMb(k), A.tileNb(k));
+            int64_t diag_len = std::min(A.tileMb(k), A.tileNb(k));
             pivots.at(k).resize(diag_len);
         }
         // transfer ipiv to pivots
@@ -104,18 +81,18 @@ void slate_getri(const int n, scalar_t* a, const int lda, int* ipiv, scalar_t* w
     }
 
     // inverse
-    slate::getri(A, pivots, {
+    slate::getri( A, pivots, {
         {slate::Option::Lookahead, lookahead},
         {slate::Option::Target, target}
     });
 
-    // todo:  get a real value for info
+    // todo:  get A_data real value for info
     *info = 0;
 
     if (verbose) {
-        std::cout << "slate_lapack_api: " << to_char(a) << "getri( "
+        std::cout << "slate_lapack_api: " << to_char(A_data) << "getri( "
                   << n << ", "
-                  << (void*)a << ", " << lda << ", " << (void*)ipiv << ", "
+                  << (void*)A_data << ", " << lda << ", " << (void*)ipiv << ", "
                   << (void*)work << ", " << lwork << ", "
                   << *info << " ) "
                   << (omp_get_wtime() - timestart) << " sec"
@@ -123,6 +100,57 @@ void slate_getri(const int n, scalar_t* a, const int lda, int* ipiv, scalar_t* w
                   << " max_threads: " << omp_get_max_threads() << "\n";
     }
 }
+
+//------------------------------------------------------------------------------
+// Fortran interfaces
+
+extern "C" {
+
+#define slate_sgetri BLAS_FORTRAN_NAME( slate_sgetri, SLATE_SGETRI )
+void slate_sgetri(
+    blas_int const* n,
+    float* A_data, blas_int const* lda,
+    blas_int* ipiv,
+    float* work, blas_int const* lwork,
+    blas_int* info )
+{
+    slate_getri( *n, A_data, *lda, ipiv, work, *lwork, info );
+}
+
+#define slate_dgetri BLAS_FORTRAN_NAME( slate_dgetri, SLATE_DGETRI )
+void slate_dgetri(
+    blas_int const* n,
+    double* A_data, blas_int const* lda,
+    blas_int* ipiv,
+    double* work, blas_int const* lwork,
+    blas_int* info )
+{
+    slate_getri( *n, A_data, *lda, ipiv, work, *lwork, info );
+}
+
+#define slate_cgetri BLAS_FORTRAN_NAME( slate_cgetri, SLATE_CGETRI )
+void slate_cgetri(
+    blas_int const* n,
+    std::complex<float>* A_data, blas_int const* lda,
+    blas_int* ipiv,
+    std::complex<float>* work, blas_int const* lwork,
+    blas_int* info )
+{
+    slate_getri( *n, A_data, *lda, ipiv, work, *lwork, info );
+}
+
+#define slate_zgetri BLAS_FORTRAN_NAME( slate_zgetri, SLATE_ZGETRI )
+void slate_zgetri(
+    blas_int const* n,
+    std::complex<double>* A_data, blas_int const* lda,
+    blas_int* ipiv,
+    std::complex<double>* work, blas_int const* lwork,
+    blas_int* info )
+{
+    slate_getri( *n, A_data, *lda, ipiv, work, *lwork, info );
+}
+
+} // extern "C"
 
 } // namespace lapack_api
 } // namespace slate
